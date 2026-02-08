@@ -3,25 +3,42 @@
 @tailwind utilities;
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #000000;
+  --surface: #111111;
+  --foreground: #ededed;
+  --accent: #a882ff;
+  --accent-glow: rgba(168, 130, 255, 0.4);
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
-  }
+* {
+  scrollbar-width: thin;
+  scrollbar-color: rgba(255, 255, 255, 0.08) transparent;
 }
 
 body {
   color: var(--foreground);
   background: var(--background);
-  font-family: Arial, Helvetica, sans-serif;
 }
 
+::selection {
+  background: var(--accent-glow);
+  color: white;
+}
+
+/* Glow utility for emotion dots */
 @layer utilities {
+  .glow {
+    box-shadow: 0 0 8px 2px var(--accent-glow);
+  }
+
   .text-balance {
     text-wrap: balance;
+  }
+}
+
+/* Smooth page transitions */
+@layer base {
+  html {
+    scroll-behavior: smooth;
   }
 }
