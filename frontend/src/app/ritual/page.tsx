@@ -15,6 +15,7 @@ const RELATIONSHIP_OPTIONS = [
   { value: "sibling", label: "Sibling" },
   { value: "mother", label: "Mom" },
   { value: "father", label: "Dad" },
+  { value: "soulmate", label: "Soulmate" },
 ];
 
 const TONE_OPTIONS = [
@@ -166,18 +167,54 @@ function DrumPicker({
 export default function RitualPage() {
   const router = useRouter();
   const setCompanion = useCompanionStore((s) => s.setCompanion);
+  const setBackgroundImage = useCompanionStore((s) => s.setBackgroundImage);
+  const setUserName = useCompanionStore((s) => s.setUserName);
 
   const [phase, setPhase] = useState<Phase>("void");
   const [name, setName] = useState("");
   const [relIndex, setRelIndex] = useState(1); // default: friend
   const [toneIndex, setToneIndex] = useState(0); // default: warm
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [wantsPhoto, setWantsPhoto] = useState<boolean | null>(null);
+  const [photoPreview, setPhotoPreview] = useState<string | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
+  const [nickname, setNickname] = useState("");
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const relationship = RELATIONSHIP_OPTIONS[relIndex].value;
   const tone = TONE_OPTIONS[toneIndex].value;
 
   // Start the ritual after the void
   const beginRitual = () => setPhase("input");
+
+  const readFile = (file: File) => {
+    if (!file.type.startsWith("image/")) return;
+    const reader = new FileReader();
+    reader.onload = () => setPhotoPreview(reader.result as string);
+    reader.readAsDataURL(file);
+  };
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) readFile(file);
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files[0];
+    if (file) readFile(file);
+  };
+
+  const handleDragOver = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(true);
+  };
+
+  const handleDragLeave = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+  };
 
   const handleSubmit = useCallback(async () => {
     if (!name.trim() || isSubmitting) return;
@@ -196,6 +233,18 @@ export default function RitualPage() {
 
       setCompanion(companion.companion_id, companion.name, userId);
 
+      // Store user nickname
+      if (nickname.trim()) {
+        setUserName(nickname.trim());
+      }
+
+      // Store background image if user uploaded one
+      if (wantsPhoto && photoPreview) {
+        setBackgroundImage(photoPreview);
+      } else {
+        setBackgroundImage(null);
+      }
+
       // Flash phase
       setPhase("flash");
       setTimeout(() => {
@@ -206,7 +255,7 @@ export default function RitualPage() {
       console.error("Failed to create companion:", err);
       setIsSubmitting(false);
     }
-  }, [name, relationship, tone, isSubmitting, setCompanion, router, relIndex, toneIndex]);
+  }, [name, relationship, tone, isSubmitting, setCompanion, setBackgroundImage, setUserName, router, relIndex, toneIndex, wantsPhoto, photoPreview, nickname]);
 
   return (
     <div className="relative flex items-center justify-center min-h-screen bg-black overflow-hidden">
@@ -327,13 +376,130 @@ export default function RitualPage() {
               />
             </motion.div>
 
+            {/* Photo Upload */}
+            <motion.div
+              className="w-full space-y-4"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.0, duration: 0.6 }}
+            >
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+                사진을 등록하시겠습니까?
+              </p>
+              <div className="flex justify-center gap-4">
+                <button
+                  type="button"
+                  onClick={() => setWantsPhoto(true)}
+                  className={`px-6 py-2 rounded-full text-xs tracking-wide border transition-all ${
+                    wantsPhoto === true
+                      ? "bg-accent/20 border-accent/40 text-accent"
+                      : "bg-white/[0.04] border-white/10 text-white/40 hover:border-accent/20 hover:text-accent/60"
+                  }`}
+                >
+                  YES
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setWantsPhoto(false);
+                    setPhotoPreview(null);
+                  }}
+                  className={`px-6 py-2 rounded-full text-xs tracking-wide border transition-all ${
+                    wantsPhoto === false
+                      ? "bg-accent/20 border-accent/40 text-accent"
+                      : "bg-white/[0.04] border-white/10 text-white/40 hover:border-accent/20 hover:text-accent/60"
+                  }`}
+                >
+                  NO
+                </button>
+              </div>
+              <input
+                ref={fileInputRef}
+                type="file"
+                accept="image/*"
+                className="hidden"
+                onChange={handleFileChange}
+              />
+              {wantsPhoto === true && (
+                <motion.div
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col items-center gap-3"
+                >
+                  {photoPreview ? (
+                    /* Preview with re-drop support */
+                    <div
+                      className="relative w-48 h-48 rounded-lg overflow-hidden border border-accent/20 cursor-pointer group"
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <img
+                        src={photoPreview}
+                        alt="Preview"
+                        className="w-full h-full object-cover"
+                      />
+                      <div className="absolute inset-0 bg-black/50 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center">
+                        <span className="text-[10px] text-white/60 tracking-wide">
+                          Click or drop to change
+                        </span>
+                      </div>
+                    </div>
+                  ) : (
+                    /* Drop zone */
+                    <div
+                      className={`w-48 h-48 rounded-lg border-2 border-dashed flex flex-col items-center justify-center gap-2 cursor-pointer transition-all ${
+                        isDragging
+                          ? "border-accent/60 bg-accent/10"
+                          : "border-white/10 hover:border-accent/30"
+                      }`}
+                      onDrop={handleDrop}
+                      onDragOver={handleDragOver}
+                      onDragLeave={handleDragLeave}
+                      onClick={() => fileInputRef.current?.click()}
+                    >
+                      <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" className="text-white/20">
+                        <path d="M21 15v4a2 2 0 01-2 2H5a2 2 0 01-2-2v-4" />
+                        <polyline points="17 8 12 3 7 8" />
+                        <line x1="12" y1="3" x2="12" y2="15" />
+                      </svg>
+                      <span className="text-[10px] text-white/25 tracking-wide">
+                        Drop image here
+                      </span>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+            </motion.div>
+
+            {/* User Nickname */}
+            <motion.div
+              className="w-full space-y-3"
+              initial={{ opacity: 0 }}
+              animate={{ opacity: 1 }}
+              transition={{ delay: 1.1, duration: 0.6 }}
+            >
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+                당신을 어떻게 불러드릴까요?
+              </p>
+              <input
+                type="text"
+                value={nickname}
+                onChange={(e) => setNickname(e.target.value)}
+                placeholder="Your name..."
+                maxLength={30}
+                className="w-full text-center text-lg font-serif bg-transparent border-b border-white/10 focus:border-accent/50 pb-2 outline-none text-white/90 placeholder-white/15 transition-colors"
+              />
+            </motion.div>
+
             {/* Submit */}
             <motion.button
               onClick={handleSubmit}
               disabled={!name.trim() || isSubmitting}
               initial={{ opacity: 0 }}
               animate={{ opacity: 1 }}
-              transition={{ delay: 1.1, duration: 0.6 }}
+              transition={{ delay: 1.3, duration: 0.6 }}
               className="px-8 py-3 rounded-full bg-accent/10 border border-accent/20 text-accent text-sm tracking-wide hover:bg-accent/20 transition-all disabled:opacity-30 disabled:cursor-not-allowed"
             >
               {isSubmitting ? (

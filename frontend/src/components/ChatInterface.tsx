@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AudioPlayer from "./AudioPlayer";
 import { fetchSpeech } from "@/lib/api";
+import { useCompanionStore } from "@/lib/store";
 
 interface ChatMessage {
   id: string;
@@ -24,6 +25,10 @@ export default function ChatInterface({
   companionId,
   companionName = "Companion",
 }: ChatInterfaceProps) {
+  const backgroundImage = useCompanionStore((s) => s.backgroundImage);
+  const userName = useCompanionStore((s) => s.userName);
+  const userNameRef = useRef(userName);
+  userNameRef.current = userName;
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
@@ -41,55 +46,86 @@ export default function ChatInterface({
 
   // WebSocket connection
   useEffect(() => {
+    let cancelled = false;
     const ws = new WebSocket(`${WS_URL}/ws/${companionId}`);
-    wsRef.current = ws;
 
-    ws.onopen = () => setIsConnected(true);
-    ws.onclose = () => setIsConnected(false);
+    ws.onopen = () => {
+      if (!cancelled) {
+        wsRef.current = ws;
+        setIsConnected(true);
+      }
+    };
+
+    ws.onclose = () => {
+      if (!cancelled) {
+        setIsConnected(false);
+      }
+    };
 
     ws.onmessage = (event) => {
-      const data = JSON.parse(event.data);
+      if (cancelled) return;
 
-      if (data.type === "stream") {
-        setMessages((prev) => {
-          const streamId = streamingIdRef.current;
-          if (!streamId) {
-            // Start a new AI message
-            const newId = `ai-${Date.now()}`;
-            streamingIdRef.current = newId;
-            return [
-              ...prev,
-              { id: newId, sender: "AI", text: data.content, isStreaming: true },
-            ];
-          }
-          // Append to existing streaming message
-          return prev.map((m) =>
-            m.id === streamId ? { ...m, text: m.text + data.content } : m
-          );
-        });
+      let data: { type?: string; content?: string; error?: string };
+      try {
+        data = JSON.parse(event.data);
+      } catch {
+        console.warn("WebSocket: failed to parse message", event.data);
+        return;
       }
 
-      if (data.type === "end") {
+      if (data.type === "stream") {
+        // Check/set ref OUTSIDE the updater to avoid StrictMode double-invocation bug
+        if (!streamingIdRef.current) {
+          const newId = `ai-${Date.now()}`;
+          streamingIdRef.current = newId;
+          setMessages((prev) => [
+            ...prev,
+            { id: newId, sender: "AI", text: data.content ?? "", isStreaming: true },
+          ]);
+        } else {
+          const streamId = streamingIdRef.current;
+          setMessages((prev) =>
+            prev.map((m) =>
+              m.id === streamId ? { ...m, text: m.text + (data.content ?? "") } : m
+            )
+          );
+        }
+      } else if (data.type === "end") {
         const streamId = streamingIdRef.current;
         if (streamId) {
+          // Streaming existed — finalize it
           setMessages((prev) =>
             prev.map((m) =>
               m.id === streamId ? { ...m, isStreaming: false } : m
             )
           );
-          streamingIdRef.current = null;
+        } else if (data.content) {
+          // No streaming messages were received (e.g. backend error or
+          // missed stream chunks). Show the full content as a complete message.
+          setMessages((prev) => [
+            ...prev,
+            {
+              id: `ai-${Date.now()}`,
+              sender: "AI" as const,
+              text: data.content ?? "",
+              isStreaming: false,
+            },
+          ]);
         }
+        streamingIdRef.current = null;
       }
     };
 
     return () => {
+      cancelled = true;
+      streamingIdRef.current = null;
       ws.close();
     };
   }, [companionId]);
 
   const sendMessage = useCallback(() => {
     const trimmed = input.trim();
-    if (!trimmed || !wsRef.current || !isConnected) return;
+    if (!trimmed || !wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
 
     const userMsg: ChatMessage = {
       id: `user-${Date.now()}`,
@@ -98,7 +134,7 @@ export default function ChatInterface({
     };
 
     setMessages((prev) => [...prev, userMsg]);
-    wsRef.current.send(JSON.stringify({ message: trimmed }));
+    wsRef.current.send(JSON.stringify({ message: trimmed, user_name: userNameRef.current }));
     setInput("");
   }, [input, isConnected]);
 
@@ -128,6 +164,18 @@ export default function ChatInterface({
 
   return (
     <div className="flex flex-col h-full bg-black text-white">
+      {/* Photo banner area (Instagram-style) */}
+      {backgroundImage && (
+        <div className="relative w-full shrink-0" style={{ height: "30vh" }}>
+          <img
+            src={backgroundImage}
+            alt=""
+            className="w-full h-full object-cover"
+          />
+          <div className="absolute inset-0 bg-gradient-to-b from-transparent via-transparent to-black" />
+        </div>
+      )}
+
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06]">
         <div className="w-2 h-2 rounded-full" style={{
@@ -153,7 +201,7 @@ export default function ChatInterface({
             >
               {/* Label */}
               <span className="text-[10px] uppercase tracking-widest text-white/30 mb-1.5">
-                {msg.sender === "USER" ? "You" : companionName}
+                {msg.sender === "USER" ? (userName || "You") : companionName}
               </span>
 
               {/* Text */}
@@ -166,7 +214,7 @@ export default function ChatInterface({
               >
                 {msg.text}
                 {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-[#a882ff] animate-pulse rounded-sm" />
+                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-[var(--accent)] animate-pulse rounded-sm" />
                 )}
               </p>
 
@@ -179,10 +227,10 @@ export default function ChatInterface({
                     <button
                       onClick={() => handleSpeak(msg)}
                       disabled={loadingAudioId === msg.id}
-                      className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-[#a882ff] transition-colors disabled:opacity-40"
+                      className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-[var(--accent)] transition-colors disabled:opacity-40"
                     >
                       {loadingAudioId === msg.id ? (
-                        <span className="inline-block w-3 h-3 border border-white/30 border-t-[#a882ff] rounded-full animate-spin" />
+                        <span className="inline-block w-3 h-3 border border-white/30 border-t-[var(--accent)] rounded-full animate-spin" />
                       ) : (
                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
                           <path d="M11 5L6 9H2v6h4l5 4V5z" />
@@ -215,7 +263,7 @@ export default function ChatInterface({
           <button
             onClick={sendMessage}
             disabled={!input.trim() || !isConnected}
-            className="text-white/30 hover:text-[#a882ff] transition-colors disabled:opacity-20"
+            className="text-white/30 hover:text-[var(--accent)] transition-colors disabled:opacity-20"
           >
             <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor">
               <path d="M2.01 21L23 12 2.01 3 2 10l15 2-15 2z" />
