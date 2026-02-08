@@ -19,7 +19,9 @@
       "Bash(cmd /c \"taskkill /PID 23132 /F\")",
       "Bash(cmd /c \"taskkill /PID 23132 /F /T\")",
       "Bash(powershell:*)",
-      "Bash(git push:*)"
+      "Bash(git push:*)",
+      "Bash(where:*)",
+      "Bash(pip show:*)"
     ]
   }
 }

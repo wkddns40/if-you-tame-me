@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback, useRef } from "react";
+import { useState, useCallback, useRef, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCompanionStore } from "@/lib/store";
@@ -48,37 +48,58 @@ function DrumPicker({
   selectedIndex: number;
   onSelect: (index: number) => void;
 }) {
+  const containerRef = useRef<HTMLDivElement>(null);
   const touchStartY = useRef(0);
   const accumulated = useRef(0);
+  const indexRef = useRef(selectedIndex);
+  indexRef.current = selectedIndex;
 
-  const shift = (dir: number) => {
-    onSelect((selectedIndex + dir + options.length) % options.length);
-  };
+  const shift = useCallback(
+    (dir: number) => {
+      onSelect((indexRef.current + dir + options.length) % options.length);
+    },
+    [onSelect, options.length]
+  );
 
-  const handleWheel = (e: React.WheelEvent) => {
-    e.preventDefault();
-    accumulated.current += e.deltaY;
-    if (Math.abs(accumulated.current) >= 40) {
-      shift(accumulated.current > 0 ? 1 : -1);
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+
+    const onWheel = (e: WheelEvent) => {
+      e.preventDefault();
+      accumulated.current += e.deltaY;
+      if (Math.abs(accumulated.current) >= 40) {
+        shift(accumulated.current > 0 ? 1 : -1);
+        accumulated.current = 0;
+      }
+    };
+
+    const onTouchStart = (e: TouchEvent) => {
+      touchStartY.current = e.touches[0].clientY;
       accumulated.current = 0;
-    }
-  };
+    };
 
-  const handleTouchStart = (e: React.TouchEvent) => {
-    touchStartY.current = e.touches[0].clientY;
-    accumulated.current = 0;
-  };
+    const onTouchMove = (e: TouchEvent) => {
+      e.preventDefault();
+      const delta = touchStartY.current - e.touches[0].clientY;
+      accumulated.current += delta;
+      touchStartY.current = e.touches[0].clientY;
+      if (Math.abs(accumulated.current) >= 30) {
+        shift(accumulated.current > 0 ? 1 : -1);
+        accumulated.current = 0;
+      }
+    };
 
-  const handleTouchMove = (e: React.TouchEvent) => {
-    e.preventDefault();
-    const delta = touchStartY.current - e.touches[0].clientY;
-    accumulated.current += delta;
-    touchStartY.current = e.touches[0].clientY;
-    if (Math.abs(accumulated.current) >= 30) {
-      shift(accumulated.current > 0 ? 1 : -1);
-      accumulated.current = 0;
-    }
-  };
+    el.addEventListener("wheel", onWheel, { passive: false });
+    el.addEventListener("touchstart", onTouchStart, { passive: true });
+    el.addEventListener("touchmove", onTouchMove, { passive: false });
+
+    return () => {
+      el.removeEventListener("wheel", onWheel);
+      el.removeEventListener("touchstart", onTouchStart);
+      el.removeEventListener("touchmove", onTouchMove);
+    };
+  }, [shift]);
 
   const getItem = (offset: number) => {
     const idx = (selectedIndex + offset + options.length) % options.length;
@@ -92,11 +113,9 @@ function DrumPicker({
 
   return (
     <div
+      ref={containerRef}
       className="relative mx-auto select-none cursor-ns-resize touch-none"
       style={{ width: 160, height: ITEM_H * VISIBLE }}
-      onWheel={handleWheel}
-      onTouchStart={handleTouchStart}
-      onTouchMove={handleTouchMove}
     >
       {/* fade edges */}
       <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-black/50 to-transparent z-10 pointer-events-none" />
