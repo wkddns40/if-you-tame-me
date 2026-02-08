@@ -13,7 +13,13 @@
       "Bash(netstat:*)",
       "Bash(taskkill:*)",
       "Bash(git add:*)",
-      "Bash(git commit:*)"
+      "Bash(git commit:*)",
+      "Bash(tasklist:*)",
+      "Bash(findstr:*)",
+      "Bash(cmd /c \"taskkill /PID 23132 /F\")",
+      "Bash(cmd /c \"taskkill /PID 23132 /F /T\")",
+      "Bash(powershell:*)",
+      "Bash(git push:*)"
     ]
   }
 }

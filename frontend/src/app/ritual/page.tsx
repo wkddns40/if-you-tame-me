@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCompanionStore } from "@/lib/store";
@@ -13,14 +13,136 @@ const RELATIONSHIP_OPTIONS = [
   { value: "friend", label: "Best Friend" },
   { value: "mentor", label: "Mentor" },
   { value: "sibling", label: "Sibling" },
+  { value: "mother", label: "Mom" },
+  { value: "father", label: "Dad" },
 ];
 
 const TONE_OPTIONS = [
-  { value: "warm and caring", label: "Warm" },
-  { value: "playful and witty", label: "Playful" },
-  { value: "calm and wise", label: "Calm" },
-  { value: "bold and honest", label: "Bold" },
+  { value: "INTJ", label: "INTJ" },
+  { value: "INTP", label: "INTP" },
+  { value: "ENTJ", label: "ENTJ" },
+  { value: "ENTP", label: "ENTP" },
+  { value: "INFJ", label: "INFJ" },
+  { value: "INFP", label: "INFP" },
+  { value: "ENFJ", label: "ENFJ" },
+  { value: "ENFP", label: "ENFP" },
+  { value: "ISTJ", label: "ISTJ" },
+  { value: "ISFJ", label: "ISFJ" },
+  { value: "ESTJ", label: "ESTJ" },
+  { value: "ESFJ", label: "ESFJ" },
+  { value: "ISTP", label: "ISTP" },
+  { value: "ISFP", label: "ISFP" },
+  { value: "ESTP", label: "ESTP" },
+  { value: "ESFP", label: "ESFP" },
 ];
+
+const ITEM_H = 32;
+const VISIBLE = 3; // show 3 items (prev, current, next)
+
+function DrumPicker({
+  options,
+  selectedIndex,
+  onSelect,
+}: {
+  options: { value: string; label: string }[];
+  selectedIndex: number;
+  onSelect: (index: number) => void;
+}) {
+  const touchStartY = useRef(0);
+  const accumulated = useRef(0);
+
+  const shift = (dir: number) => {
+    onSelect((selectedIndex + dir + options.length) % options.length);
+  };
+
+  const handleWheel = (e: React.WheelEvent) => {
+    e.preventDefault();
+    accumulated.current += e.deltaY;
+    if (Math.abs(accumulated.current) >= 40) {
+      shift(accumulated.current > 0 ? 1 : -1);
+      accumulated.current = 0;
+    }
+  };
+
+  const handleTouchStart = (e: React.TouchEvent) => {
+    touchStartY.current = e.touches[0].clientY;
+    accumulated.current = 0;
+  };
+
+  const handleTouchMove = (e: React.TouchEvent) => {
+    e.preventDefault();
+    const delta = touchStartY.current - e.touches[0].clientY;
+    accumulated.current += delta;
+    touchStartY.current = e.touches[0].clientY;
+    if (Math.abs(accumulated.current) >= 30) {
+      shift(accumulated.current > 0 ? 1 : -1);
+      accumulated.current = 0;
+    }
+  };
+
+  const getItem = (offset: number) => {
+    const idx = (selectedIndex + offset + options.length) % options.length;
+    return options[idx];
+  };
+
+  const offsets = Array.from(
+    { length: VISIBLE },
+    (_, i) => i - Math.floor(VISIBLE / 2)
+  ); // [-1, 0, 1]
+
+  return (
+    <div
+      className="relative mx-auto select-none cursor-ns-resize touch-none"
+      style={{ width: 160, height: ITEM_H * VISIBLE }}
+      onWheel={handleWheel}
+      onTouchStart={handleTouchStart}
+      onTouchMove={handleTouchMove}
+    >
+      {/* fade edges */}
+      <div className="absolute inset-x-0 top-0 h-6 bg-gradient-to-b from-black/50 to-transparent z-10 pointer-events-none" />
+      <div className="absolute inset-x-0 bottom-0 h-6 bg-gradient-to-t from-black/50 to-transparent z-10 pointer-events-none" />
+
+      {/* center highlight line */}
+      <div
+        className="absolute inset-x-4 border-t border-b border-accent/20 pointer-events-none"
+        style={{ top: ITEM_H, height: ITEM_H }}
+      />
+
+      <AnimatePresence mode="popLayout">
+        <motion.div
+          key={selectedIndex}
+          initial={{ y: 0, opacity: 0 }}
+          animate={{ y: 0, opacity: 1 }}
+          exit={{ opacity: 0 }}
+          transition={{ duration: 0.15 }}
+          className="absolute inset-0 flex flex-col"
+        >
+          {offsets.map((offset) => {
+            const item = getItem(offset);
+            const isCenter = offset === 0;
+            return (
+              <div
+                key={offset}
+                className="flex items-center justify-center"
+                style={{ height: ITEM_H }}
+              >
+                <span
+                  className={`text-sm tracking-wide transition-all ${
+                    isCenter
+                      ? "text-accent scale-110"
+                      : "text-white/50 scale-95"
+                  }`}
+                >
+                  {item.label}
+                </span>
+              </div>
+            );
+          })}
+        </motion.div>
+      </AnimatePresence>
+    </div>
+  );
+}
 
 export default function RitualPage() {
   const router = useRouter();
@@ -28,9 +150,12 @@ export default function RitualPage() {
 
   const [phase, setPhase] = useState<Phase>("void");
   const [name, setName] = useState("");
-  const [relationship, setRelationship] = useState("friend");
-  const [tone, setTone] = useState("warm and caring");
+  const [relIndex, setRelIndex] = useState(1); // default: friend
+  const [toneIndex, setToneIndex] = useState(0); // default: warm
   const [isSubmitting, setIsSubmitting] = useState(false);
+
+  const relationship = RELATIONSHIP_OPTIONS[relIndex].value;
+  const tone = TONE_OPTIONS[toneIndex].value;
 
   // Start the ritual after the void
   const beginRitual = () => setPhase("input");
@@ -62,7 +187,7 @@ export default function RitualPage() {
       console.error("Failed to create companion:", err);
       setIsSubmitting(false);
     }
-  }, [name, relationship, tone, isSubmitting, setCompanion, router]);
+  }, [name, relationship, tone, isSubmitting, setCompanion, router, relIndex, toneIndex]);
 
   return (
     <div className="relative flex items-center justify-center min-h-screen bg-black overflow-hidden">
@@ -83,9 +208,9 @@ export default function RitualPage() {
               className="w-3 h-3 rounded-full bg-accent"
               animate={{
                 boxShadow: [
-                  "0 0 8px 2px rgba(168,130,255,0.2)",
-                  "0 0 30px 10px rgba(168,130,255,0.5)",
-                  "0 0 8px 2px rgba(168,130,255,0.2)",
+                  "0 0 8px 2px rgba(212,166,52,0.2)",
+                  "0 0 30px 10px rgba(212,166,52,0.5)",
+                  "0 0 8px 2px rgba(212,166,52,0.2)",
                 ],
               }}
               transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
@@ -159,21 +284,11 @@ export default function RitualPage() {
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
                 Relationship
               </p>
-              <div className="flex justify-center gap-2 flex-wrap">
-                {RELATIONSHIP_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setRelationship(opt.value)}
-                    className={`px-4 py-2 rounded-full text-xs transition-all ${
-                      relationship === opt.value
-                        ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:border-white/10"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <DrumPicker
+                options={RELATIONSHIP_OPTIONS}
+                selectedIndex={relIndex}
+                onSelect={setRelIndex}
+              />
             </motion.div>
 
             {/* Tone */}
@@ -186,21 +301,11 @@ export default function RitualPage() {
               <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
                 Personality
               </p>
-              <div className="flex justify-center gap-2 flex-wrap">
-                {TONE_OPTIONS.map((opt) => (
-                  <button
-                    key={opt.value}
-                    onClick={() => setTone(opt.value)}
-                    className={`px-4 py-2 rounded-full text-xs transition-all ${
-                      tone === opt.value
-                        ? "bg-accent/20 text-accent border border-accent/30"
-                        : "bg-white/[0.03] text-white/40 border border-white/[0.06] hover:border-white/10"
-                    }`}
-                  >
-                    {opt.label}
-                  </button>
-                ))}
-              </div>
+              <DrumPicker
+                options={TONE_OPTIONS}
+                selectedIndex={toneIndex}
+                onSelect={setToneIndex}
+              />
             </motion.div>
 
             {/* Submit */}
