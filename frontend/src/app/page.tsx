@@ -18,7 +18,7 @@ export default function Home() {
 
   return (
     <div className="flex items-center justify-center min-h-screen bg-black">
-      <div className="w-1.5 h-1.5 rounded-full bg-accent animate-glow-pulse" />
+      <div className="w-1 h-1 rounded-full bg-accent animate-glow-pulse blur-[10px]" />
     </div>
   );
 }

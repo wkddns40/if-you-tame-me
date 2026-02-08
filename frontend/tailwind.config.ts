@@ -20,7 +20,7 @@ const config: Config = {
       },
       animation: {
         "fade-in": "fadeIn 0.6s ease-out forwards",
-        "glow-pulse": "glowPulse 2s ease-in-out infinite",
+        "glow-pulse": "glowPulse 1.4s ease-in-out infinite",
       },
       keyframes: {
         fadeIn: {
@@ -28,8 +28,11 @@ const config: Config = {
           "100%": { opacity: "1", transform: "translateY(0)" },
         },
         glowPulse: {
-          "0%, 100%": { boxShadow: "0 0 8px 2px rgba(168,130,255,0.3)" },
-          "50%": { boxShadow: "0 0 20px 6px rgba(168,130,255,0.6)" },
+          "0%, 100%": { transform: "scale(0.1)", filter: "blur(2px)", boxShadow: "0 0 6px 2px rgba(255,191,0,0.3)" },
+          "15%": { transform: "scale(1)", filter: "blur(10px)", boxShadow: "0 0 50px 18px rgba(255,191,0,0.95)" },
+          "30%": { transform: "scale(0.2)", filter: "blur(3px)", boxShadow: "0 0 10px 4px rgba(255,191,0,0.4)" },
+          "45%": { transform: "scale(0.9)", filter: "blur(9px)", boxShadow: "0 0 40px 14px rgba(255,191,0,0.85)" },
+          "60%": { transform: "scale(0.1)", filter: "blur(2px)", boxShadow: "0 0 6px 2px rgba(255,191,0,0.3)" },
         },
       },
     },

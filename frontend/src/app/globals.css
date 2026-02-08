@@ -6,8 +6,8 @@
   --background: #000000;
   --surface: #111111;
   --foreground: #ededed;
-  --accent: #a882ff;
-  --accent-glow: rgba(168, 130, 255, 0.4);
+  --accent: #ffbf00;
+  --accent-glow: rgba(255, 191, 0, 0.7);
 }
 
 * {
