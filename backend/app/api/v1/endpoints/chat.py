@@ -7,7 +7,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
-from app.core.prompts import SYSTEM_PROMPT_TEMPLATE
+from app.core.prompts import SYSTEM_PROMPT_TEMPLATE, MBTI_PROFILES
 
 logger = logging.getLogger(__name__)
 
@@ -110,10 +110,19 @@ def build_system_prompt(companion: dict, context_logs: list[dict], user_name: st
     else:
         context_str = "(No prior conversations yet)"
 
+    mbti = companion.get("tone_style", "ENFJ")
+    profile = MBTI_PROFILES.get(mbti, MBTI_PROFILES["ENFJ"])
+
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
         name=companion.get("name", "Companion"),
         relationship=companion.get("relationship_type", "friend"),
-        tone=companion.get("tone_style", "warm and caring"),
+        mbti=mbti,
+        mbti_label=profile["label"],
+        core=profile["core"],
+        length=profile["length"],
+        do_rules=profile["do"],
+        dont_rules=profile["dont"],
+        examples=profile["examples"],
         summary=companion.get("summary", ""),
         context_logs=context_str,
         user_name=display_name,
@@ -134,9 +143,8 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
         await websocket.close()
         return
 
-    # Determine model tier
-    plan = get_subscription_plan(companion["user_id"])
-    model = "gpt-4o" if plan == "SOULMATE" else "gpt-4o-mini"
+    # Use gpt-4o for all users to ensure rich personality expression
+    model = "gpt-4o"
 
     try:
         while True:
@@ -150,8 +158,6 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                 user_message = data
                 user_name = ""
 
-            print(f"[DEBUG] Received user_name={user_name!r}, message={user_message[:50]!r}")
-
             try:
                 # 2. Embed user message
                 user_embedding = await get_embedding(user_message)
@@ -164,16 +170,20 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                     str(companion_id), user_embedding
                 )
 
-                # 5. Build system prompt with context
+                # 5. Build system prompt with context + get MBTI generation params
                 system_prompt = build_system_prompt(companion, relevant_logs, user_name)
+                mbti = companion.get("tone_style", "ENFJ")
+                profile = MBTI_PROFILES.get(mbti, MBTI_PROFILES["ENFJ"])
 
-                # 6. Stream AI response
+                # 6. Stream AI response (max_tokens & temperature per MBTI)
                 stream = await openai_client.chat.completions.create(
                     model=model,
                     messages=[
                         {"role": "system", "content": system_prompt},
                         {"role": "user", "content": user_message},
                     ],
+                    max_tokens=profile.get("max_tokens", 120),
+                    temperature=profile.get("temperature", 0.8),
                     stream=True,
                 )
 
