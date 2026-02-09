@@ -17,7 +17,7 @@ from openai import AsyncOpenAI
 
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
-from app.core.prompts import ANALYST_PROMPT
+from app.core.prompts import ANALYST_PROMPT, SUMMARY_PROMPT
 
 settings = get_settings()
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
@@ -84,6 +84,50 @@ def upsert_daily_emotion(companion_id: str, analysis: dict) -> None:
     sb.table("Daily_Emotions").upsert(row).execute()
 
 
+def fetch_current_summary(companion_id: str) -> str:
+    """Read existing summary from Companions table."""
+    sb = get_supabase_client()
+    result = (
+        sb.table("Companions")
+        .select("summary")
+        .eq("companion_id", companion_id)
+        .single()
+        .execute()
+    )
+    return (result.data or {}).get("summary", "") or ""
+
+
+async def generate_rolling_summary(
+    current_summary: str, analysis: dict, logs: list[dict]
+) -> str:
+    """Call gpt-4o-mini to merge old summary + today's data into updated summary."""
+    logs_text = "\n".join(
+        f"[{log['sender']}] {log['message']}" for log in logs
+    )
+    emotion_text = json.dumps(analysis, ensure_ascii=False)
+
+    prompt = SUMMARY_PROMPT.format(
+        current_summary=current_summary or "(No existing summary)",
+        emotion_analysis=emotion_text,
+        todays_logs=logs_text,
+    )
+
+    response = await openai_client.chat.completions.create(
+        model="gpt-4o-mini",
+        messages=[{"role": "user", "content": prompt}],
+        max_tokens=300,
+    )
+    return response.choices[0].message.content.strip()
+
+
+def update_companion_summary(companion_id: str, new_summary: str) -> None:
+    """Write updated summary back to Companions table."""
+    sb = get_supabase_client()
+    sb.table("Companions").update({"summary": new_summary}).eq(
+        "companion_id", companion_id
+    ).execute()
+
+
 async def run_daily_analysis():
     """Main entry point: analyze all companions."""
     companion_ids = get_all_companion_ids()
@@ -99,6 +143,12 @@ async def run_daily_analysis():
         analysis = await analyze_emotions(logs)
         upsert_daily_emotion(cid, analysis)
         print(f"  [{cid}] Done -> {analysis.get('primary_emotion')} {analysis.get('color_hex')}")
+
+        # Rolling summary generation
+        current_summary = fetch_current_summary(cid)
+        new_summary = await generate_rolling_summary(current_summary, analysis, logs)
+        update_companion_summary(cid, new_summary)
+        print(f"  [{cid}] Summary updated ({len(new_summary)} chars)")
 
     print("[Daily Analysis] Complete.")
 

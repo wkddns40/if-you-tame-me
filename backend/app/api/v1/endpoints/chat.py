@@ -1,5 +1,6 @@
 import json
 import logging
+from datetime import date, timedelta
 from uuid import UUID
 
 from fastapi import APIRouter, WebSocket, WebSocketDisconnect
@@ -78,6 +79,65 @@ async def search_relevant_logs(
         return []
 
 
+async def search_relevant_logs_v2(
+    companion_id: str, query_embedding: list[float], top_k: int = 8
+) -> list[dict]:
+    """Recency-weighted semantic search via match_chat_logs_v2."""
+    try:
+        sb = get_supabase_client()
+        result = sb.rpc(
+            "match_chat_logs_v2",
+            {
+                "query_embedding": query_embedding,
+                "target_companion_id": companion_id,
+                "match_count": top_k,
+            },
+        ).execute()
+        return result.data or []
+    except Exception as e:
+        logger.warning("RAG v2 search failed, falling back to v1: %s", e)
+        return await search_relevant_logs(companion_id, query_embedding, top_k)
+
+
+def get_recent_logs(companion_id: str, count: int = 6) -> list[dict]:
+    """Fetch most recent messages for conversational continuity."""
+    try:
+        sb = get_supabase_client()
+        result = sb.rpc(
+            "get_recent_chat_logs",
+            {
+                "target_companion_id": companion_id,
+                "msg_count": count,
+            },
+        ).execute()
+        # Results come newest-first; reverse to chronological order
+        logs = result.data or []
+        logs.reverse()
+        return logs
+    except Exception as e:
+        logger.warning("Recent logs fetch failed: %s", e)
+        return []
+
+
+def get_recent_emotions(companion_id: str, days: int = 3) -> list[dict]:
+    """Fetch recent daily emotions for emotional state context."""
+    try:
+        sb = get_supabase_client()
+        start_date = str(date.today() - timedelta(days=days))
+        result = (
+            sb.table("Daily_Emotions")
+            .select("date, primary_emotion, color_hex, summary_text")
+            .eq("companion_id", companion_id)
+            .gte("date", start_date)
+            .order("date", desc=True)
+            .execute()
+        )
+        return result.data or []
+    except Exception as e:
+        logger.warning("Emotions fetch failed: %s", e)
+        return []
+
+
 def save_chat_log(
     companion_id: str, sender: str, message: str, embedding: list[float] | None = None
 ) -> None:
@@ -96,25 +156,59 @@ def save_chat_log(
         logger.warning("Failed to save chat log: %s", e)
 
 
-def build_system_prompt(companion: dict, context_logs: list[dict], user_name: str = "") -> str:
-    """Build the system prompt with companion persona and RAG context."""
+def build_system_prompt(
+    companion: dict,
+    semantic_logs: list[dict],
+    recent_logs: list[dict],
+    emotions: list[dict],
+    user_name: str = "",
+) -> str:
+    """Build the system prompt with companion persona and hybrid RAG context."""
     display_name = user_name or "친구"
-    context_str = ""
-    if context_logs:
-        lines = []
-        for log in context_logs:
-            speaker = display_name if log['sender'] == 'USER' else companion.get('name', 'Companion')
-            msg = log['message'].replace("[USER]", display_name).replace("[user]", display_name)
-            lines.append(f"{speaker}: {msg}")
-        context_str = "\n".join(lines)
+    companion_name = companion.get("name", "Companion")
+
+    def format_log(log: dict) -> str:
+        speaker = display_name if log["sender"] == "USER" else companion_name
+        msg = log["message"].replace("[USER]", display_name).replace("[user]", display_name)
+        return f"{speaker}: {msg}"
+
+    # --- Build 3 context sections ---
+    sections = []
+
+    # 1. Recent conversation (last few messages) for continuity
+    if recent_logs:
+        recent_ids = {log["log_id"] for log in recent_logs}
+        lines = [format_log(log) for log in recent_logs]
+        sections.append("Recent conversation (last few messages):\n" + "\n".join(lines))
     else:
-        context_str = "(No prior conversations yet)"
+        recent_ids = set()
+        sections.append("(No prior conversations yet)")
+
+    # 2. Related past memories (semantic, deduplicated against recent)
+    if semantic_logs:
+        past_lines = []
+        for log in semantic_logs:
+            if log["log_id"] not in recent_ids:
+                past_lines.append(format_log(log))
+        if past_lines:
+            sections.append("Related past memories:\n" + "\n".join(past_lines))
+
+    # 3. Recent emotional state
+    if emotions:
+        emo_lines = []
+        for emo in emotions:
+            emo_lines.append(
+                f"{emo['date']}: {emo['primary_emotion']} — {emo.get('summary_text', '')}"
+            )
+        sections.append("Recent emotional state:\n" + "\n".join(emo_lines))
+
+    context_str = "\n\n".join(sections)
 
     mbti = companion.get("tone_style", "ENFJ")
     profile = MBTI_PROFILES.get(mbti, MBTI_PROFILES["ENFJ"])
 
     prompt = SYSTEM_PROMPT_TEMPLATE.format(
-        name=companion.get("name", "Companion"),
+        name=companion_name,
         relationship=companion.get("relationship_type", "friend"),
         mbti=mbti,
         mbti_label=profile["label"],
@@ -165,13 +259,17 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                 # 3. Save user message with embedding
                 save_chat_log(str(companion_id), "USER", user_message, user_embedding)
 
-                # 4. RAG: Search relevant past logs
-                relevant_logs = await search_relevant_logs(
+                # 4. Hybrid retrieval: semantic + recent + emotions
+                semantic_logs = await search_relevant_logs_v2(
                     str(companion_id), user_embedding
                 )
+                recent_logs = get_recent_logs(str(companion_id))
+                emotions = get_recent_emotions(str(companion_id))
 
-                # 5. Build system prompt with context + get MBTI generation params
-                system_prompt = build_system_prompt(companion, relevant_logs, user_name)
+                # 5. Build system prompt with 3-source context + get MBTI generation params
+                system_prompt = build_system_prompt(
+                    companion, semantic_logs, recent_logs, emotions, user_name
+                )
                 mbti = companion.get("tone_style", "ENFJ")
                 profile = MBTI_PROFILES.get(mbti, MBTI_PROFILES["ENFJ"])
 

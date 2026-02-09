@@ -187,8 +187,7 @@ The user's name is "{user_name}".
 {examples}
 
 ### Memory Context
-Long-term summary: {summary}
-Recent relevant conversations:
+Long-term summary of {user_name}: {summary}
 {context_logs}
 
 ### Final Rules
@@ -208,3 +207,24 @@ Analyze the chat logs. Output JSON:
   "key_quote": "Most touching sentence"
 }
 """
+
+SUMMARY_PROMPT = """You are a memory manager for an AI companion. Merge the existing summary with today's new information into an updated summary.
+
+Rules:
+- Maximum 500 characters.
+- Prioritize key user facts: name, job, family, hobbies, ongoing concerns, important life events.
+- Update stale facts (e.g. if user changed jobs, replace old job).
+- Drop trivial details (greetings, small talk, one-off jokes).
+- Keep the tone neutral and factual (this is internal memory, not shown to the user).
+- Output ONLY the updated summary text, nothing else.
+
+Existing summary:
+{current_summary}
+
+Today's emotional analysis:
+{emotion_analysis}
+
+Today's chat logs:
+{todays_logs}
+
+Updated summary:"""
