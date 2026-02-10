@@ -1,7 +1,7 @@
 """
 TTS Manager — Hash-based caching for OpenAI TTS.
 
-Cache hit  → return stored audio URL, bump access_count.
+Cache hit  → return stored audio URL.
 Cache miss → call OpenAI TTS, upload to Supabase Storage, persist in TTS_Cache.
 """
 
@@ -46,12 +46,11 @@ class TTSManager:
         # 1. Cache lookup
         cached = self._cache_lookup(text_hash)
         if cached:
-            self._bump_access(text_hash)
             logger.info("TTS cache HIT  hash=%s", text_hash[:12])
             return TTSResult(
                 audio_url=cached["audio_url"],
                 cache_hit=True,
-                duration_ms=cached.get("duration_ms"),
+                duration_ms=None,
             )
 
         # 2. Generate via OpenAI TTS
@@ -63,7 +62,7 @@ class TTSManager:
         audio_url = self._upload_to_storage(storage_path, audio_bytes)
 
         # 4. Insert cache record
-        self._insert_cache(text_hash, voice_id, audio_url)
+        self._insert_cache(text_hash, text, voice_id, audio_url)
 
         return TTSResult(audio_url=audio_url, cache_hit=False, duration_ms=None)
 
@@ -80,34 +79,16 @@ class TTSManager:
             sb = get_supabase_client()
             result = (
                 sb.table("TTS_Cache")
-                .select("audio_url, duration_ms")
+                .select("audio_url")
                 .eq("text_hash", text_hash)
-                .maybe_single()
                 .execute()
             )
-            return result.data if result and result.data else None
+            if result.data:
+                return result.data[0]
+            return None
         except Exception as e:
             logger.warning("TTS cache lookup failed: %s", e)
             return None
-
-    @staticmethod
-    def _bump_access(text_hash: str) -> None:
-        try:
-            sb = get_supabase_client()
-            # Increment access_count and refresh last_accessed_at via raw SQL-like update
-            row = (
-                sb.table("TTS_Cache")
-                .select("access_count")
-                .eq("text_hash", text_hash)
-                .single()
-                .execute()
-            )
-            new_count = (row.data.get("access_count", 0) + 1) if row.data else 1
-            sb.table("TTS_Cache").update(
-                {"access_count": new_count, "last_accessed_at": "now()"}
-            ).eq("text_hash", text_hash).execute()
-        except Exception as e:
-            logger.warning("TTS cache bump failed: %s", e)
 
     async def _generate_speech(
         self, text: str, voice_id: str, model: str
@@ -130,12 +111,15 @@ class TTSManager:
         return sb.storage.from_(STORAGE_BUCKET).get_public_url(path)
 
     @staticmethod
-    def _insert_cache(text_hash: str, voice_id: str, audio_url: str) -> None:
+    def _insert_cache(
+        text_hash: str, text_content: str, voice_id: str, audio_url: str
+    ) -> None:
         try:
             sb = get_supabase_client()
             sb.table("TTS_Cache").insert(
                 {
                     "text_hash": text_hash,
+                    "text_content": text_content,
                     "voice_id": voice_id,
                     "audio_url": audio_url,
                 }
