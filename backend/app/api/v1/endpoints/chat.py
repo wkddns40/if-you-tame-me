@@ -9,6 +9,7 @@ from openai import AsyncOpenAI
 from app.core.config import get_settings
 from app.core.supabase import get_supabase_client
 from app.core.prompts import SYSTEM_PROMPT_TEMPLATE, MBTI_PROFILES
+from app.services.llm_engine import LLMEngine
 
 logger = logging.getLogger(__name__)
 
@@ -17,6 +18,7 @@ settings = get_settings()
 openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
 
 EMBED_MODEL = "text-embedding-3-small"
+llm_engine = LLMEngine()
 
 
 async def get_embedding(text: str) -> list[float]:
@@ -237,8 +239,8 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
         await websocket.close()
         return
 
-    # Use gpt-4o for all users to ensure rich personality expression
-    model = "gpt-4o"
+    # Look up user tier for smart routing
+    user_tier = get_subscription_plan(companion.get("user_id", ""))
 
     try:
         while True:
@@ -259,21 +261,26 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                 # 3. Save user message with embedding
                 save_chat_log(str(companion_id), "USER", user_message, user_embedding)
 
-                # 4. Hybrid retrieval: semantic + recent + emotions
+                # 4. Smart routing: decide model + context depth
+                target_llm, recent_logs, router_result = await llm_engine.generate_response(
+                    user_message, user_tier, str(companion_id)
+                )
+                model = router_result.model
+
+                # 5. Hybrid retrieval: semantic + emotions (recent already from engine)
                 semantic_logs = await search_relevant_logs_v2(
                     str(companion_id), user_embedding
                 )
-                recent_logs = get_recent_logs(str(companion_id))
                 emotions = get_recent_emotions(str(companion_id))
 
-                # 5. Build system prompt with 3-source context + get MBTI generation params
+                # 6. Build system prompt with 3-source context + get MBTI generation params
                 system_prompt = build_system_prompt(
                     companion, semantic_logs, recent_logs, emotions, user_name
                 )
                 mbti = companion.get("tone_style", "ENFJ")
                 profile = MBTI_PROFILES.get(mbti, MBTI_PROFILES["ENFJ"])
 
-                # 6. Stream AI response (max_tokens & temperature per MBTI)
+                # 7. Stream AI response (model from smart router, params per MBTI)
                 stream = await openai_client.chat.completions.create(
                     model=model,
                     messages=[
@@ -294,10 +301,10 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                             {"type": "stream", "content": delta.content}
                         )
 
-                # 7. Signal stream end
+                # 8. Signal stream end
                 await websocket.send_json({"type": "end", "content": full_response})
 
-                # 8. Save AI response with embedding
+                # 9. Save AI response with embedding
                 ai_embedding = await get_embedding(full_response)
                 save_chat_log(str(companion_id), "AI", full_response, ai_embedding)
 

@@ -87,6 +87,21 @@ CREATE TABLE public."Subscriptions" (
     plan_type VARCHAR(20) DEFAULT 'FREE', -- 'FREE', 'SOULMATE'
     is_active BOOLEAN DEFAULT TRUE
 );
+-- 6. TTS_Cache (Hash-based TTS Audio Cache)
+CREATE TABLE public."TTS_Cache" (
+    cache_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
+    text_hash VARCHAR(64) NOT NULL UNIQUE,  -- SHA-256 hash of (text + voice_id)
+    voice_id VARCHAR(20) NOT NULL DEFAULT 'shimmer',
+    audio_url TEXT NOT NULL,                -- Supabase Storage URL or base64
+    duration_ms INT,
+    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
+    access_count INT DEFAULT 1
+);
+
+-- Index for fast hash lookup
+CREATE INDEX idx_tts_cache_text_hash ON public."TTS_Cache" (text_hash);
+
 3. Backend Logic & API Specifications
 Base URL: http://localhost:8000/api/v1
 
@@ -143,6 +158,92 @@ Logic:
 Call OpenAI audio.speech.create (Model: tts-1).
 
 Return audio stream (MP3) to frontend.
+
+3.5 Smart Router (Intent Classification)
+File: backend/app/core/router.py
+
+Smart Switch 로직: 사용자 메시지를 분석하여 적절한 모델과 Retrieval k값을 결정한다.
+
+| Intent Category | Model | k (Retrieval 개수) | 기준 |
+|-----------------|-------|---------------------|------|
+| deep_emotional | gpt-4o | 8 | 감정적 깊이가 필요한 대화 (고민, 위로, 진지한 감정 표현) |
+| casual_chat | gpt-4o-mini | 3 | 일상적 대화, 가벼운 인사, 짧은 리액션 |
+| memory_recall | gpt-4o | 10 | "지난번에", "전에 말했던" 등 과거 기억 참조 |
+| simple_question | gpt-4o-mini | 2 | 단순 질문, 사실 확인, 짧은 응답 기대 |
+
+Logic:
+1. 사용자 메시지를 gpt-4o-mini로 빠르게 분류 (intent classification).
+2. 분류 결과에 따라 { model, k, reason } 반환.
+3. 분류 프롬프트는 짧고 빠르게 실행되어야 함 (max_tokens=50).
+
+Interface:
+```python
+class RouterResult:
+    intent: str          # "deep_emotional" | "casual_chat" | "memory_recall" | "simple_question"
+    model: str           # "gpt-4o" | "gpt-4o-mini"
+    k: int               # Retrieval count
+    reason: str          # 분류 근거 (디버깅용)
+
+async def classify_intent(message: str) -> RouterResult:
+    ...
+```
+
+3.6 LLM Engine (Router-Driven Model Switching)
+File: backend/app/services/llm_engine.py
+
+기존 ChatOpenAI 호출을 Router 결과에 따라 동적으로 모델을 전환하도록 수정한다.
+
+Logic:
+1. Router에서 RouterResult를 받는다.
+2. result.model에 따라 gpt-4o 또는 gpt-4o-mini를 선택.
+3. result.k에 따라 RAG 검색 개수를 조절 (match_chat_logs_v2의 match_count 파라미터).
+4. MBTI 프로필의 max_tokens, temperature는 그대로 유지.
+
+Flow:
+```
+User Message
+  → Router.classify_intent(message)
+  → RouterResult { model, k, reason }
+  → RAG Search (k=result.k)
+  → LLM Call (model=result.model, mbti_params)
+  → Stream Response
+```
+
+3.7 TTS Manager (Hash-Based Caching)
+File: backend/app/services/tts_manager.py
+
+TTS 요청을 해시 기반으로 캐싱하여 동일 텍스트의 중복 생성을 방지한다.
+
+Logic:
+1. 입력 텍스트 + voice_id를 SHA-256으로 해싱.
+2. TTS_Cache 테이블에서 해시 조회.
+3. Cache Hit → 저장된 audio_url 반환, access_count 증가, last_accessed_at 갱신.
+4. Cache Miss → OpenAI TTS API 호출 → 오디오를 Supabase Storage에 저장 → TTS_Cache에 기록 → audio_url 반환.
+
+Interface:
+```python
+class TTSManager:
+    async def get_or_create_speech(
+        self,
+        text: str,
+        voice_id: str = "shimmer",
+        model: str = "tts-1"
+    ) -> TTSResult:
+        """
+        Returns cached audio if available, otherwise generates and caches.
+        """
+        ...
+
+class TTSResult:
+    audio_url: str
+    cache_hit: bool
+    duration_ms: int | None
+```
+
+Cache 정책:
+- 최대 캐시 크기: 설정 가능 (기본 1000 entries).
+- 정리 기준: last_accessed_at 기준 LRU (Least Recently Used).
+- 동일 텍스트라도 voice_id가 다르면 별도 캐시.
 
 4. Frontend Specifications (Next.js)
 4.1 UI Design System ("Digital Luxury")

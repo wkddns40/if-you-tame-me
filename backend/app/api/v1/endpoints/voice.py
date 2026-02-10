@@ -1,13 +1,11 @@
 from fastapi import APIRouter
-from fastapi.responses import StreamingResponse
+from fastapi.responses import JSONResponse
 from pydantic import BaseModel, Field
-from openai import AsyncOpenAI
 
-from app.core.config import get_settings
+from app.services.tts_manager import TTSManager
 
 router = APIRouter()
-settings = get_settings()
-openai_client = AsyncOpenAI(api_key=settings.OPENAI_API_KEY)
+tts_manager = TTSManager()
 
 ALLOWED_VOICES = {"alloy", "echo", "fable", "onyx", "nova", "shimmer"}
 
@@ -19,21 +17,12 @@ class SpeakRequest(BaseModel):
 
 @router.post("/chat/speak")
 async def speak(request: SpeakRequest):
-    """Convert text to speech using OpenAI TTS API. Returns an MP3 audio stream."""
+    """TTS with hash-based caching. Always returns audio URL."""
     voice = request.voice_id if request.voice_id in ALLOWED_VOICES else "shimmer"
 
-    response = await openai_client.audio.speech.create(
-        model="tts-1",
-        voice=voice,
-        input=request.text,
-    )
+    result = await tts_manager.get_or_create_speech(text=request.text, voice_id=voice)
 
-    async def audio_stream():
-        async for chunk in response.response.aiter_bytes(1024):
-            yield chunk
-
-    return StreamingResponse(
-        audio_stream(),
-        media_type="audio/mpeg",
-        headers={"Content-Disposition": "inline; filename=speech.mp3"},
-    )
+    return JSONResponse({
+        "audio_url": result.audio_url,
+        "cache_hit": result.cache_hit,
+    })
