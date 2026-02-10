@@ -302,7 +302,12 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                         )
 
                 # 8. Signal stream end
-                await websocket.send_json({"type": "end", "content": full_response})
+                await websocket.send_json({
+                    "type": "end",
+                    "content": full_response,
+                    "intent": router_result.intent,
+                    "emotion_color": emotions[0]["color_hex"] if emotions else None,
+                })
 
                 # 9. Save AI response with embedding
                 ai_embedding = await get_embedding(full_response)

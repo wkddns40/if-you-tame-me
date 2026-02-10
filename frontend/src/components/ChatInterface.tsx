@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import AudioPlayer from "./AudioPlayer";
+import ResonanceRipple from "./ResonanceRipple";
 import { fetchSpeech } from "@/lib/api";
 import { useCompanionStore } from "@/lib/store";
 
@@ -12,6 +13,8 @@ interface ChatMessage {
   text: string;
   audioUrl?: string;
   isStreaming?: boolean;
+  intent?: string;
+  emotionColor?: string | null;
 }
 
 interface ChatInterfaceProps {
@@ -65,7 +68,7 @@ export default function ChatInterface({
     ws.onmessage = (event) => {
       if (cancelled) return;
 
-      let data: { type?: string; content?: string; error?: string };
+      let data: { type?: string; content?: string; error?: string; intent?: string; emotion_color?: string | null };
       try {
         data = JSON.parse(event.data);
       } catch {
@@ -93,10 +96,12 @@ export default function ChatInterface({
       } else if (data.type === "end") {
         const streamId = streamingIdRef.current;
         if (streamId) {
-          // Streaming existed — finalize it
+          // Streaming existed — finalize it with intent + emotionColor
           setMessages((prev) =>
             prev.map((m) =>
-              m.id === streamId ? { ...m, isStreaming: false } : m
+              m.id === streamId
+                ? { ...m, isStreaming: false, intent: data.intent, emotionColor: data.emotion_color }
+                : m
             )
           );
         } else if (data.content) {
@@ -109,6 +114,8 @@ export default function ChatInterface({
               sender: "AI" as const,
               text: data.content ?? "",
               isStreaming: false,
+              intent: data.intent,
+              emotionColor: data.emotion_color,
             },
           ]);
         }
@@ -204,18 +211,23 @@ export default function ChatInterface({
               </span>
 
               {/* Text */}
-              <p
-                className={`text-sm leading-relaxed max-w-[80%] ${
-                  msg.sender === "USER"
-                    ? "text-white/60"
-                    : "text-white/90 font-light"
-                }`}
-              >
-                {msg.text}
-                {msg.isStreaming && (
-                  <span className="inline-block w-1.5 h-4 ml-0.5 bg-[var(--accent)] animate-pulse rounded-sm" />
+              <div className="relative overflow-hidden max-w-[80%]">
+                {msg.sender === "AI" && !msg.isStreaming && msg.intent === "deep_emotional" && (
+                  <ResonanceRipple emotionColor={msg.emotionColor} />
                 )}
-              </p>
+                <p
+                  className={`text-sm leading-relaxed ${
+                    msg.sender === "USER"
+                      ? "text-white/60"
+                      : "text-white/90 font-light"
+                  }`}
+                >
+                  {msg.text}
+                  {msg.isStreaming && (
+                    <span className="inline-block w-1.5 h-4 ml-0.5 bg-[var(--accent)] animate-pulse rounded-sm" />
+                  )}
+                </p>
+              </div>
 
               {/* Speak button + Audio player (AI messages only) */}
               {msg.sender === "AI" && !msg.isStreaming && (
