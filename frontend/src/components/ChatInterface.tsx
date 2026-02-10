@@ -150,10 +150,9 @@ export default function ChatInterface({
     setLoadingAudioId(msg.id);
 
     try {
-      const blob = await fetchSpeech(msg.text);
-      const url = URL.createObjectURL(blob);
+      const result = await fetchSpeech(msg.text);
       setMessages((prev) =>
-        prev.map((m) => (m.id === msg.id ? { ...m, audioUrl: url } : m))
+        prev.map((m) => (m.id === msg.id ? { ...m, audioUrl: result.audio_url } : m))
       );
     } catch (err) {
       console.error("TTS error:", err);

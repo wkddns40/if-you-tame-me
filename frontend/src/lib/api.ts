@@ -1,9 +1,14 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
+export interface SpeechResult {
+  audio_url: string;
+  cache_hit: boolean;
+}
+
 export async function fetchSpeech(
   text: string,
   voiceId: string = "shimmer"
-): Promise<Blob> {
+): Promise<SpeechResult> {
   const res = await fetch(`${API_URL}/chat/speak`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
@@ -14,7 +19,7 @@ export async function fetchSpeech(
     throw new Error(`TTS request failed: ${res.status}`);
   }
 
-  return res.blob();
+  return res.json();
 }
 
 export interface CreateCompanionPayload {
