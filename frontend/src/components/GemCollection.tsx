@@ -130,8 +130,8 @@ export default function GemCollection({ userId, companionId }: GemCollectionProp
                     className="w-3 h-3 rounded-full"
                     style={{
                       backgroundColor:
-                        (selected.metadata as Record<string, string>)?.color_hex || "#d4a634",
-                      boxShadow: `0 0 10px 3px ${(selected.metadata as Record<string, string>)?.color_hex || "#d4a634"}66`,
+                        (selected.metadata as Record<string, string>)?.color_hex || "#e619c3",
+                      boxShadow: `0 0 10px 3px ${(selected.metadata as Record<string, string>)?.color_hex || "#e619c3"}66`,
                     }}
                   />
                   <span className="font-serif text-white/80">

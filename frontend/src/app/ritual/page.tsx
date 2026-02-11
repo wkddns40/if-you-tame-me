@@ -150,7 +150,7 @@ function DrumPicker({
                   className={`text-sm tracking-wide transition-all ${
                     isCenter
                       ? "text-accent scale-110"
-                      : "text-white/50 scale-95"
+                      : "text-white/60 scale-95"
                   }`}
                 >
                   {item.label}
@@ -258,7 +258,19 @@ export default function RitualPage() {
   }, [name, relationship, tone, isSubmitting, setCompanion, setBackgroundImage, setUserName, router, relIndex, toneIndex, wantsPhoto, photoPreview, nickname]);
 
   return (
-    <div className="relative flex items-center justify-center min-h-screen bg-black overflow-hidden">
+    <div className="relative flex items-center justify-center min-h-screen noise-bg text-white overflow-hidden">
+      {/* Velvet overlay */}
+      <div className="velvet-overlay" />
+
+      {/* Background decorative lines */}
+      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
+        <div className="absolute top-[10%] left-[5%] w-px h-64 bg-gradient-to-b from-white/10 to-transparent" />
+        <div className="absolute bottom-[20%] right-[8%] w-px h-96 bg-gradient-to-t from-primary/10 to-transparent" />
+        <div className="absolute top-1/4 right-1/4 w-1 h-1 bg-white rounded-full opacity-20" />
+        <div className="absolute bottom-1/3 left-1/3 w-1 h-1 bg-primary rounded-full opacity-40 blur-[1px]" />
+        <div className="absolute top-2/3 right-1/2 w-0.5 h-0.5 bg-white rounded-full opacity-10" />
+      </div>
+
       <AnimatePresence mode="wait">
         {/* ── PHASE: VOID ── */}
         {phase === "void" && (
@@ -271,18 +283,11 @@ export default function RitualPage() {
             className="flex flex-col items-center gap-8 cursor-pointer"
             onClick={beginRitual}
           >
-            {/* Breathing dot */}
-            <motion.div
-              className="w-3 h-3 rounded-full bg-accent"
-              animate={{
-                boxShadow: [
-                  "0 0 8px 2px rgba(212,166,52,0.2)",
-                  "0 0 30px 10px rgba(212,166,52,0.5)",
-                  "0 0 8px 2px rgba(212,166,52,0.2)",
-                ],
-              }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            />
+            {/* Soul sphere halo — same as main page */}
+            <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(230,25,195,0.2)]">
+              <div className="absolute inset-0 rounded-full soul-glow scale-150 animate-pulse" />
+              <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#e619c3]" />
+            </div>
             <motion.p
               className="text-white/20 text-xs tracking-[0.3em] uppercase"
               animate={{ opacity: [0.2, 0.6, 0.2] }}
@@ -301,12 +306,12 @@ export default function RitualPage() {
             animate={{ opacity: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95 }}
             transition={{ duration: 0.8, ease: "easeOut" }}
-            className="flex flex-col items-center gap-10 px-6 max-w-md w-full"
+            className="flex flex-col items-center gap-10 px-8 py-10 max-w-md w-full rounded-3xl glass-morphism z-20"
           >
             {/* Title */}
             <div className="text-center space-y-3">
               <motion.h1
-                className="font-serif text-3xl md:text-4xl text-white/90 tracking-tight"
+                className="font-serif text-3xl md:text-4xl text-white tracking-tight"
                 initial={{ opacity: 0, y: 20 }}
                 animate={{ opacity: 1, y: 0 }}
                 transition={{ delay: 0.3, duration: 0.6 }}
@@ -314,7 +319,7 @@ export default function RitualPage() {
                 Name your companion
               </motion.h1>
               <motion.p
-                className="text-sm text-white/30"
+                className="text-sm text-white/50"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6, duration: 0.6 }}
@@ -338,7 +343,7 @@ export default function RitualPage() {
                 placeholder="Their name..."
                 maxLength={50}
                 autoFocus
-                className="w-full text-center text-2xl font-serif bg-transparent border-b border-white/10 focus:border-accent/50 pb-3 outline-none text-white/90 placeholder-white/15 transition-colors"
+                className="w-full text-center text-2xl font-serif bg-transparent border-b border-white/10 focus:border-accent/50 pb-3 outline-none text-white/90 placeholder-white/30 transition-colors"
               />
             </motion.div>
 
@@ -349,7 +354,7 @@ export default function RitualPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.7, duration: 0.6 }}
             >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 text-center">
                 Relationship
               </p>
               <DrumPicker
@@ -366,7 +371,7 @@ export default function RitualPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.9, duration: 0.6 }}
             >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 text-center">
                 Personality
               </p>
               <DrumPicker
@@ -383,7 +388,7 @@ export default function RitualPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 1.0, duration: 0.6 }}
             >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 text-center">
                 사진을 등록하시겠습니까?
               </p>
               <div className="flex justify-center gap-4">
@@ -464,7 +469,7 @@ export default function RitualPage() {
                         <polyline points="17 8 12 3 7 8" />
                         <line x1="12" y1="3" x2="12" y2="15" />
                       </svg>
-                      <span className="text-[10px] text-white/25 tracking-wide">
+                      <span className="text-[10px] text-white/40 tracking-wide">
                         Drop image here
                       </span>
                     </div>
@@ -480,7 +485,7 @@ export default function RitualPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 1.1, duration: 0.6 }}
             >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/25 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 text-center">
                 당신을 어떻게 불러드릴까요?
               </p>
               <input
@@ -489,7 +494,7 @@ export default function RitualPage() {
                 onChange={(e) => setNickname(e.target.value)}
                 placeholder="Your name..."
                 maxLength={30}
-                className="w-full text-center text-lg font-serif bg-transparent border-b border-white/10 focus:border-accent/50 pb-2 outline-none text-white/90 placeholder-white/15 transition-colors"
+                className="w-full text-center text-lg font-serif bg-transparent border-b border-white/10 focus:border-accent/50 pb-2 outline-none text-white/90 placeholder-white/30 transition-colors"
               />
             </motion.div>
 
@@ -525,7 +530,7 @@ export default function RitualPage() {
           >
             {/* Expanding ring */}
             <motion.div
-              className="absolute w-4 h-4 rounded-full border border-accent"
+              className="absolute w-4 h-4 rounded-full border border-primary"
               initial={{ scale: 0, opacity: 1 }}
               animate={{ scale: 60, opacity: 0 }}
               transition={{ duration: 1.4, ease: "easeOut" }}
