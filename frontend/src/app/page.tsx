@@ -128,9 +128,9 @@ export default function Home() {
       <section className="relative h-screen flex flex-col items-center justify-center px-6 text-center">
         {/* Soul sphere */}
         <Reveal className="relative mb-24">
-          <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(230,25,195,0.2)]">
+          <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(180,23,186,0.2)]">
             <div className="absolute inset-0 rounded-full soul-glow scale-150 animate-pulse" />
-            <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#e619c3]" />
+            <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#B417BA]" />
           </div>
         </Reveal>
 
@@ -196,12 +196,12 @@ export default function Home() {
       <div className="fixed bottom-12 left-0 w-full flex justify-center z-[100] px-6">
         <button
           onClick={handleAwaken}
-          className="glass-morphism px-12 py-4 rounded-full group overflow-hidden relative transition-all duration-500 hover:shadow-[0_0_30px_rgba(230,25,195,0.4)]"
+          className="glass-morphism px-12 py-4 rounded-full group overflow-hidden relative transition-all duration-500 hover:shadow-[0_0_30px_rgba(180,23,186,0.4)]"
         >
           <div className="absolute inset-0 bg-primary/10 translate-y-full group-hover:translate-y-0 transition-transform duration-500" />
           <span className="relative text-sm tracking-[0.4em] uppercase font-light text-white flex items-center gap-4">
             Awaken
-            <span className="w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_8px_#e619c3]" />
+            <span className="w-1.5 h-1.5 bg-primary rounded-full shadow-[0_0_8px_#B417BA]" />
           </span>
         </button>
       </div>

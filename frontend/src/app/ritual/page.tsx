@@ -284,9 +284,9 @@ export default function RitualPage() {
             onClick={beginRitual}
           >
             {/* Soul sphere halo — same as main page */}
-            <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(230,25,195,0.2)]">
+            <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(180,23,186,0.2)]">
               <div className="absolute inset-0 rounded-full soul-glow scale-150 animate-pulse" />
-              <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#e619c3]" />
+              <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#B417BA]" />
             </div>
             <motion.p
               className="text-white/20 text-xs tracking-[0.3em] uppercase"
