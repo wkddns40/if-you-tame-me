@@ -66,8 +66,8 @@ export default function Home() {
 
       {/* ── Nav ── */}
       <nav className="fixed top-0 left-0 w-full p-8 z-50 flex justify-between items-center mix-blend-difference">
-        <div className="text-sm tracking-widest uppercase opacity-60">Le Petit Sanctuary</div>
-        <div className="text-sm tracking-widest uppercase opacity-60">Est. 2024</div>
+        <div className="text-sm tracking-widest uppercase opacity-60">Sanctuary</div>
+        <div className="text-sm tracking-widest uppercase opacity-60">Est. 2026</div>
       </nav>
 
       {/* ══════════ Hero ══════════ */}
