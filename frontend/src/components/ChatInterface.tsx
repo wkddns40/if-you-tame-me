@@ -2,16 +2,13 @@
 
 import { useCallback, useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
-import AudioPlayer from "./AudioPlayer";
 import ResonanceRipple from "./ResonanceRipple";
-import { fetchSpeech } from "@/lib/api";
 import { useCompanionStore } from "@/lib/store";
 
 interface ChatMessage {
   id: string;
   sender: "USER" | "AI";
   text: string;
-  audioUrl?: string;
   isStreaming?: boolean;
   intent?: string;
   emotionColor?: string | null;
@@ -30,13 +27,16 @@ export default function ChatInterface({
 }: ChatInterfaceProps) {
   const backgroundImage = useCompanionStore((s) => s.backgroundImage);
   const userName = useCompanionStore((s) => s.userName);
+  const setUserName = useCompanionStore((s) => s.setUserName);
+  const setCompanionName = useCompanionStore((s) => s.setCompanionName);
   const userNameRef = useRef(userName);
   userNameRef.current = userName;
+  const hasGreetedRef = useRef(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [isConnected, setIsConnected] = useState(false);
-  const [loadingAudioId, setLoadingAudioId] = useState<string | null>(null);
-
+  const [displayName, setDisplayName] = useState(companionName);
+  const [nameRevealing, setNameRevealing] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -76,7 +76,18 @@ export default function ChatInterface({
         return;
       }
 
-      if (data.type === "stream") {
+      if (data.type === "greeting") {
+        hasGreetedRef.current = true;
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `greeting-${Date.now()}`,
+            sender: "AI" as const,
+            text: data.content ?? "",
+            isStreaming: false,
+          },
+        ]);
+      } else if (data.type === "stream") {
         // Check/set ref OUTSIDE the updater to avoid StrictMode double-invocation bug
         if (!streamingIdRef.current) {
           const newId = `ai-${Date.now()}`;
@@ -93,6 +104,47 @@ export default function ChatInterface({
             )
           );
         }
+      } else if (data.type === "naming_prompt") {
+        // AI asks user to name them
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `naming-${Date.now()}`,
+            sender: "AI" as const,
+            text: data.content ?? "",
+            isStreaming: false,
+            intent: "naming_prompt",
+          },
+        ]);
+      } else if (data.type === "name_reveal") {
+        // Companion has been named — animate the header
+        const newName = data.content ?? "";
+        if (newName) {
+          setCompanionName(newName);
+          setNameRevealing(true);
+          setDisplayName(newName);
+          setTimeout(() => setNameRevealing(false), 2000);
+        }
+      } else if (data.type === "user_name_set") {
+        // Backend extracted the user's name from their message
+        const extractedName = data.content ?? "";
+        if (extractedName) {
+          setUserName(extractedName);
+          userNameRef.current = extractedName;
+          hasGreetedRef.current = false;
+        }
+      } else if (data.type === "announcement") {
+        // MBTI personality discovery announcement
+        setMessages((prev) => [
+          ...prev,
+          {
+            id: `announcement-${Date.now()}`,
+            sender: "AI" as const,
+            text: data.content ?? "",
+            isStreaming: false,
+            intent: "announcement",
+          },
+        ]);
       } else if (data.type === "end") {
         const streamId = streamingIdRef.current;
         if (streamId) {
@@ -143,28 +195,12 @@ export default function ChatInterface({
     setMessages((prev) => [...prev, userMsg]);
     wsRef.current.send(JSON.stringify({ message: trimmed, user_name: userNameRef.current }));
     setInput("");
-  }, [input, isConnected]);
+  }, [input, isConnected, setUserName]);
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
     if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       sendMessage();
-    }
-  };
-
-  const handleSpeak = async (msg: ChatMessage) => {
-    if (msg.audioUrl || loadingAudioId) return;
-    setLoadingAudioId(msg.id);
-
-    try {
-      const result = await fetchSpeech(msg.text);
-      setMessages((prev) =>
-        prev.map((m) => (m.id === msg.id ? { ...m, audioUrl: result.audio_url } : m))
-      );
-    } catch (err) {
-      console.error("TTS error:", err);
-    } finally {
-      setLoadingAudioId(null);
     }
   };
 
@@ -187,9 +223,28 @@ export default function ChatInterface({
         <div className="w-2 h-2 rounded-full" style={{
           backgroundColor: isConnected ? "#4ade80" : "#666",
         }} />
-        <span className="text-sm font-light tracking-wide text-white/70">
-          {companionName}
-        </span>
+        <AnimatePresence mode="wait">
+          <motion.span
+            key={displayName}
+            initial={nameRevealing ? { opacity: 0, y: -10, scale: 0.9 } : false}
+            animate={{ opacity: 1, y: 0, scale: 1 }}
+            exit={{ opacity: 0, y: 10 }}
+            transition={{ duration: 0.6, ease: "easeOut" }}
+            className={`text-sm font-light tracking-wide transition-colors duration-1000 ${
+              nameRevealing ? "text-accent" : "text-white/70"
+            }`}
+          >
+            {displayName}
+          </motion.span>
+        </AnimatePresence>
+        {nameRevealing && (
+          <motion.div
+            initial={{ opacity: 0, scale: 0 }}
+            animate={{ opacity: [0, 1, 0], scale: [0.5, 1.2, 0] }}
+            transition={{ duration: 2, ease: "easeOut" }}
+            className="w-6 h-6 rounded-full bg-accent/30 blur-md absolute left-16"
+          />
+        )}
       </div>
 
       {/* Messages */}
@@ -207,7 +262,7 @@ export default function ChatInterface({
             >
               {/* Label */}
               <span className="text-[10px] uppercase tracking-widest text-white/30 mb-1.5">
-                {msg.sender === "USER" ? (userName || "You") : companionName}
+                {msg.sender === "USER" ? (userName || "You") : displayName}
               </span>
 
               {/* Text */}
@@ -229,31 +284,6 @@ export default function ChatInterface({
                 </p>
               </div>
 
-              {/* Speak button + Audio player (AI messages only) */}
-              {msg.sender === "AI" && !msg.isStreaming && (
-                <div className="mt-2">
-                  {msg.audioUrl ? (
-                    <AudioPlayer audioUrl={msg.audioUrl} />
-                  ) : (
-                    <button
-                      onClick={() => handleSpeak(msg)}
-                      disabled={loadingAudioId === msg.id}
-                      className="flex items-center gap-1.5 text-[11px] text-white/30 hover:text-[var(--accent)] transition-colors disabled:opacity-40"
-                    >
-                      {loadingAudioId === msg.id ? (
-                        <span className="inline-block w-3 h-3 border border-white/30 border-t-[var(--accent)] rounded-full animate-spin" />
-                      ) : (
-                        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
-                          <path d="M11 5L6 9H2v6h4l5 4V5z" />
-                          <path d="M15.54 8.46a5 5 0 010 7.07" />
-                          <path d="M19.07 4.93a10 10 0 010 14.14" />
-                        </svg>
-                      )}
-                      {loadingAudioId === msg.id ? "Generating..." : "Listen"}
-                    </button>
-                  )}
-                </div>
-              )}
             </motion.div>
           ))}
         </AnimatePresence>

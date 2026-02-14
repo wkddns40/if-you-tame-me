@@ -1,27 +1,5 @@
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000/api/v1";
 
-export interface SpeechResult {
-  audio_url: string;
-  cache_hit: boolean;
-}
-
-export async function fetchSpeech(
-  text: string,
-  voiceId: string = "shimmer"
-): Promise<SpeechResult> {
-  const res = await fetch(`${API_URL}/chat/speak`, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ text, voice_id: voiceId }),
-  });
-
-  if (!res.ok) {
-    throw new Error(`TTS request failed: ${res.status}`);
-  }
-
-  return res.json();
-}
-
 export interface CreateCompanionPayload {
   user_id: string;
   name: string;

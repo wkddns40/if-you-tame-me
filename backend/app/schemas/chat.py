@@ -21,8 +21,3 @@ class ChatLogResponse(BaseModel):
 class ChatMessage(BaseModel):
     """WebSocket incoming message."""
     message: str
-
-
-class SpeakRequest(BaseModel):
-    text: str
-    voice_id: str = Field(default="shimmer")

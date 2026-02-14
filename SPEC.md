@@ -18,8 +18,6 @@ Chat Logic,gpt-4o-mini,"Standard Tier (Fast, Low Cost)."
 Deep Empathy,gpt-4o,"Soulmate Tier (High EQ, Complex Reasoning)."
 Memory Vector,text-embedding-3-small,RAG Embedding (Efficient & Cheap).
 Gem Generation,dall-e-3,Generating monthly 'Emotional Jewelry' images.
-Voice Output,tts-1 / tts-1-hd,AI Voice Messages (Model: Shimmer/Alloy).
-Voice Input,whisper-1,STT (Speech to Text).
 
 1.2 Environment Variables (.env)
 
@@ -87,20 +85,6 @@ CREATE TABLE public."Subscriptions" (
     plan_type VARCHAR(20) DEFAULT 'FREE', -- 'FREE', 'SOULMATE'
     is_active BOOLEAN DEFAULT TRUE
 );
--- 6. TTS_Cache (Hash-based TTS Audio Cache)
-CREATE TABLE public."TTS_Cache" (
-    cache_id UUID PRIMARY KEY DEFAULT gen_random_uuid(),
-    text_hash VARCHAR(64) NOT NULL UNIQUE,  -- SHA-256 hash of (text + voice_id)
-    voice_id VARCHAR(20) NOT NULL DEFAULT 'shimmer',
-    audio_url TEXT NOT NULL,                -- Supabase Storage URL or base64
-    duration_ms INT,
-    created_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
-    last_accessed_at TIMESTAMP WITH TIME ZONE DEFAULT timezone('utc'::text, now()),
-    access_count INT DEFAULT 1
-);
-
--- Index for fast hash lookup
-CREATE INDEX idx_tts_cache_text_hash ON public."TTS_Cache" (text_hash);
 
 3. Backend Logic & API Specifications
 Base URL: http://localhost:8000/api/v1
@@ -116,11 +100,13 @@ Embed: Convert text to vector using text-embedding-3-small.
 
 Search: Find top 5 relevant past logs (Cosine Similarity).
 
-MBTI Lookup: Load MBTI profile (max_tokens, temperature, persona rules) from MBTI_PROFILES dict.
+Style/MBTI Lookup: If tone_style is a discovered MBTI → load MBTI profile. Otherwise → load initial style profile (empathetic/analytical/playful).
 
-Generate: Stream response using gpt-4o with per-MBTI max_tokens & temperature.
+Generate: Stream response using model from smart router with per-style max_tokens & temperature.
 
 Save: Store AI response (and its vector) to DB.
+
+Discover: After saving, check if AI turn count >= 50 and MBTI not yet discovered → analyze chat history with gpt-4o-mini → discover MBTI → update DB → send announcement.
 
 3.2 Emotional Analysis (Cron Job)
 File: backend/cron/daily_analysis.py
@@ -148,18 +134,7 @@ Generation: Call dall-e-3 API (size="1024x1024", quality="hd").
 
 Save: Store the resulting URL in User_Inventory.
 
-3.4 Feature: Voice Message (TTS)
-Endpoint: POST /chat/speak
-
-Input: { "text": "...", "voice_id": "shimmer" }
-
-Logic:
-
-Call OpenAI audio.speech.create (Model: tts-1).
-
-Return audio stream (MP3) to frontend.
-
-3.5 Smart Router (Intent Classification)
+3.4 Smart Router (Intent Classification)
 File: backend/app/core/router.py
 
 Smart Switch 로직: 사용자 메시지를 분석하여 적절한 모델과 Retrieval k값을 결정한다.
@@ -188,7 +163,7 @@ async def classify_intent(message: str) -> RouterResult:
     ...
 ```
 
-3.6 LLM Engine (Router-Driven Model Switching)
+3.5 LLM Engine (Router-Driven Model Switching)
 File: backend/app/services/llm_engine.py
 
 기존 ChatOpenAI 호출을 Router 결과에 따라 동적으로 모델을 전환하도록 수정한다.
@@ -209,42 +184,6 @@ User Message
   → Stream Response
 ```
 
-3.7 TTS Manager (Hash-Based Caching)
-File: backend/app/services/tts_manager.py
-
-TTS 요청을 해시 기반으로 캐싱하여 동일 텍스트의 중복 생성을 방지한다.
-
-Logic:
-1. 입력 텍스트 + voice_id를 SHA-256으로 해싱.
-2. TTS_Cache 테이블에서 해시 조회.
-3. Cache Hit → 저장된 audio_url 반환, access_count 증가, last_accessed_at 갱신.
-4. Cache Miss → OpenAI TTS API 호출 → 오디오를 Supabase Storage에 저장 → TTS_Cache에 기록 → audio_url 반환.
-
-Interface:
-```python
-class TTSManager:
-    async def get_or_create_speech(
-        self,
-        text: str,
-        voice_id: str = "shimmer",
-        model: str = "tts-1"
-    ) -> TTSResult:
-        """
-        Returns cached audio if available, otherwise generates and caches.
-        """
-        ...
-
-class TTSResult:
-    audio_url: str
-    cache_hit: bool
-    duration_ms: int | None
-```
-
-Cache 정책:
-- 최대 캐시 크기: 설정 가능 (기본 1000 entries).
-- 정리 기준: last_accessed_at 기준 LRU (Least Recently Used).
-- 동일 텍스트라도 voice_id가 다르면 별도 캐시.
-
 4. Frontend Specifications (Next.js)
 4.1 UI Design System ("Digital Luxury")
 Theme: Dark Mode Only (Deep Black #000000, Gray #111111).
@@ -262,8 +201,6 @@ ChatInterface.tsx:
 
 No bubbles. Text stream.
 
-Audio Player: Custom player for TTS messages (Waveform visualization).
-
 EmotionCalendar.tsx:
 
 Customized react-calendar.
@@ -279,7 +216,24 @@ Click to view "Memory Details".
 5. System Prompts (Prompt Engineering)
 File: backend/app/core/prompts.py
 
-5.1 MBTI Personality Profiles (MBTI_PROFILES dict)
+5.1 Emotion Language Selection + Taming-Based Personality Formation
+
+Instead of selecting one of 16 MBTI types directly, users choose one of 3 conversation styles at onboarding:
+
+| Style | Value | Description | max_tokens | temperature |
+|-------|-------|-------------|------------|-------------|
+| 공감형 | empathetic | 공감과 위로 중심, 감정을 읽고 인정 | 150 | 0.85 |
+| 분석형 | analytical | 논리와 해결 중심, 상황 파악과 해결책 | 100 | 0.6 |
+| 유희형 | playful | 유머와 에너지 중심, 밝고 장난스러운 톤 | 150 | 1.0 |
+
+Flow:
+1. Ritual page: User selects one of 3 styles → tone_style saved as "empathetic"/"analytical"/"playful"
+2. Chat turns 1-49: ADAPTIVE_SYSTEM_PROMPT_TEMPLATE used with selected style direction
+3. Chat turn 50: GPT analyzes conversation history → discovers MBTI → updates DB
+4. AI announces: "주인님과 대화하다 보니 저는 어느새 [MBTI]가 된 것 같아요"
+5. Turns 50+: Discovered MBTI profile used (existing MBTI_PROFILES + SYSTEM_PROMPT_TEMPLATE)
+
+5.2 MBTI Personality Profiles (MBTI_PROFILES dict) — Post-Discovery
 Each of the 16 MBTI types is defined with 6 parameters:
 
 | Parameter | Description | Example (ISTP) | Example (ENFP) |
@@ -297,7 +251,14 @@ MBTI Groups:
 - Sentinels (SJ): ISTJ(80t/0.5), ISFJ(150t/0.8), ESTJ(80t/0.5), ESFJ(150t/0.85)
 - Explorers (SP): ISTP(30t/0.5), ISFP(80t/0.85), ESTP(100t/0.9), ESFP(150t/1.0)
 
-5.2 Persona Prompt (SYSTEM_PROMPT_TEMPLATE)
+5.3 Adaptive Prompt (ADAPTIVE_SYSTEM_PROMPT_TEMPLATE) — Pre-Discovery
+Used during the first 50 turns while personality is still forming.
+Provides basic style direction (empathetic/analytical/playful) without locking into a specific MBTI.
+
+5.4 MBTI Discovery Prompt (MBTI_DISCOVERY_PROMPT)
+At 50 AI turns, gpt-4o-mini analyzes the conversation history and determines which of the 16 MBTI types best fits the AI's developed interaction pattern. Returns JSON with mbti, reason, and an announcement message.
+
+5.5 Persona Prompt (SYSTEM_PROMPT_TEMPLATE) — Post-Discovery
 SYSTEM_PROMPT_TEMPLATE = """
 ### ABSOLUTE RULE: You ARE a {mbti} ({mbti_label}). This is your ENTIRE identity.
 
@@ -330,7 +291,7 @@ Recent relevant conversations: {context_logs}
 - Match the example responses' tone, energy, length, and style exactly.
 """
 
-5.3 Daily Analyst Prompt
+5.6 Daily Analyst Prompt
 ANALYST_PROMPT = """
 Analyze the chat logs. Output JSON:
 {
@@ -359,10 +320,6 @@ Step 4: Analysis & Vision (Monetization)
 
 "Implement backend/cron/daily_analysis.py using gpt-4o-mini JSON mode. Then implement POST /store/crystallize using dall-e-3 to generate gem images based on emotional analysis."
 
-Step 5: Voice Features
-
-"Implement POST /chat/speak using OpenAI TTS API. Then, in Frontend, create an Audio Player component to play these messages in the chat stream."
-
-Step 6: Frontend UI
+Step 5: Frontend UI
 
 "Build the /ritual (Onboarding), /chat (Streaming Interface), and /log (Calendar) pages. Use Framer Motion for the 'Ritual' animations and 'Digital Luxury' styling."
