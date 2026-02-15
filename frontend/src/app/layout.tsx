@@ -27,7 +27,7 @@ export default function RootLayout({
   return (
     <html lang="ko" className="dark">
       <body
-        className={`${playfair.variable} ${inter.variable} font-sans antialiased bg-black text-white min-h-screen`}
+        className={`${playfair.variable} ${inter.variable} font-sans antialiased text-white min-h-screen`}
       >
         {children}
       </body>

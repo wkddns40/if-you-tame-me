@@ -205,7 +205,7 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full bg-black text-white">
+    <div className="flex flex-col h-full text-white">
       {/* Photo banner area (Instagram-style) */}
       {backgroundImage && (
         <div className="relative w-full shrink-0" style={{ height: "30vh" }}>
@@ -221,7 +221,7 @@ export default function ChatInterface({
       {/* Header */}
       <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06]">
         <div className="w-2 h-2 rounded-full" style={{
-          backgroundColor: isConnected ? "#4ade80" : "#666",
+          backgroundColor: isConnected ? "#e619c3" : "#666",
         }} />
         <AnimatePresence mode="wait">
           <motion.span

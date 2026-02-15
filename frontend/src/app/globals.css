@@ -3,11 +3,11 @@
 @tailwind utilities;
 
 :root {
-  --background: #000000;
+  --background: #444444;
   --surface: #111111;
   --foreground: #ededed;
-  --accent: #B417BA;
-  --accent-glow: rgba(180, 23, 186, 0.6);
+  --accent: #e619c3;
+  --accent-glow: rgba(230, 25, 195, 0.6);
 }
 
 * {
@@ -41,7 +41,7 @@ body {
 /* Landing page */
 .soul-glow {
   filter: blur(60px);
-  background: radial-gradient(circle, rgba(180, 23, 186, 0.4) 0%, transparent 70%);
+  background: radial-gradient(circle, rgba(230, 25, 195, 0.4) 0%, transparent 70%);
 }
 
 .velvet-overlay {
@@ -59,14 +59,14 @@ body {
 }
 
 .iridescent-gem {
-  background: linear-gradient(135deg, #B417BA 0%, #6e19e6 50%, #19e6dc 100%);
+  background: linear-gradient(135deg, #e619c3 0%, #6e19e6 50%, #19e6dc 100%);
   clip-path: polygon(50% 0%, 100% 38%, 82% 100%, 18% 100%, 0% 38%);
-  box-shadow: 0 0 40px rgba(180, 23, 186, 0.5);
+  box-shadow: 0 0 40px rgba(230, 25, 195, 0.5);
 }
 
 .noise-bg {
   position: relative;
-  background-color: #000;
+  background-color: #444444;
 }
 .noise-bg::before {
   content: "";
@@ -77,7 +77,8 @@ body {
   background-image: url("data:image/svg+xml,%3Csvg viewBox='0 0 200 200' xmlns='http://www.w3.org/2000/svg'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.65' numOctaves='3' stitchTiles='stitch'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
   background-repeat: repeat;
   background-size: 150px 150px;
-  opacity: 0.8;
+  opacity: 0.5;
+  mix-blend-mode: screen;
   pointer-events: none;
   z-index: 0;
 }

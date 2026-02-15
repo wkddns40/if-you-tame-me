@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { motion, AnimatePresence } from "framer-motion";
 import { useCompanionStore } from "@/lib/store";
@@ -43,8 +43,12 @@ export default function RitualPage() {
 
   const tone = selectedStyle || "empathetic";
 
-  // Start the ritual after the void
-  const beginRitual = () => setPhase("input");
+  // Auto-transition from void to input after 2 seconds
+  useEffect(() => {
+    if (phase !== "void") return;
+    const timer = setTimeout(() => setPhase("input"), 2000);
+    return () => clearTimeout(timer);
+  }, [phase]);
 
   // TODO: 사진 등록 관련 함수들 — 관계 형성 후 아이템 구매 시 재활용 예정
   // const readFile = (file: File) => { ... };
@@ -91,17 +95,6 @@ export default function RitualPage() {
 
   return (
     <div className="relative flex items-center justify-center min-h-screen noise-bg text-white overflow-hidden">
-      {/* Velvet overlay */}
-      <div className="velvet-overlay" />
-
-      {/* Background decorative lines */}
-      <div className="fixed inset-0 pointer-events-none -z-10 overflow-hidden">
-        <div className="absolute top-[10%] left-[5%] w-px h-64 bg-gradient-to-b from-white/10 to-transparent" />
-        <div className="absolute bottom-[20%] right-[8%] w-px h-96 bg-gradient-to-t from-primary/10 to-transparent" />
-        <div className="absolute top-1/4 right-1/4 w-1 h-1 bg-white rounded-full opacity-20" />
-        <div className="absolute bottom-1/3 left-1/3 w-1 h-1 bg-primary rounded-full opacity-40 blur-[1px]" />
-        <div className="absolute top-2/3 right-1/2 w-0.5 h-0.5 bg-white rounded-full opacity-10" />
-      </div>
 
       <AnimatePresence mode="wait">
         {/* ── PHASE: VOID ── */}
@@ -112,21 +105,13 @@ export default function RitualPage() {
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
             transition={{ duration: 1.2 }}
-            className="flex flex-col items-center gap-8 cursor-pointer"
-            onClick={beginRitual}
+            className="flex flex-col items-center gap-8"
           >
-            {/* Soul sphere halo — same as main page */}
-            <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(180,23,186,0.2)]">
+            {/* Soul sphere halo */}
+            <div className="w-48 h-48 rounded-full border border-primary/40 flex items-center justify-center relative shadow-[0_0_50px_rgba(230,25,195,0.2)]">
               <div className="absolute inset-0 rounded-full soul-glow scale-150 animate-pulse" />
-              <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#B417BA]" />
+              <div className="w-4 h-4 rounded-full bg-primary shadow-[0_0_20px_#e619c3]" />
             </div>
-            <motion.p
-              className="text-white/20 text-xs tracking-[0.3em] uppercase"
-              animate={{ opacity: [0.2, 0.6, 0.2] }}
-              transition={{ duration: 3, repeat: Infinity, ease: "easeInOut" }}
-            >
-              Touch to begin
-            </motion.p>
           </motion.div>
         )}
 
@@ -151,7 +136,7 @@ export default function RitualPage() {
                 Begin the bond
               </motion.h1>
               <motion.p
-                className="text-sm text-white/50"
+                className="text-sm text-white/80"
                 initial={{ opacity: 0 }}
                 animate={{ opacity: 1 }}
                 transition={{ delay: 0.6, duration: 0.6 }}
@@ -169,7 +154,7 @@ export default function RitualPage() {
               animate={{ opacity: 1 }}
               transition={{ delay: 0.9, duration: 0.6 }}
             >
-              <p className="text-[10px] uppercase tracking-[0.2em] text-white/40 text-center">
+              <p className="text-[10px] uppercase tracking-[0.2em] text-white/70 text-center">
                 지금 필요한 대화 스타일
               </p>
               <div className="flex flex-col gap-3">
@@ -182,14 +167,14 @@ export default function RitualPage() {
                       onClick={() => setSelectedStyle(style.value)}
                       className={`relative w-full px-5 py-4 rounded-2xl border text-left transition-all duration-300 ${
                         isSelected
-                          ? "bg-accent/10 border-accent/50 shadow-[0_0_20px_rgba(180,23,186,0.15)]"
+                          ? "bg-accent/10 border-accent/50 shadow-[0_0_20px_rgba(230,25,195,0.15)]"
                           : "bg-white/[0.03] border-white/10 hover:border-white/20 hover:bg-white/[0.05]"
                       }`}
                     >
                       <div className="flex items-center gap-3">
                         <span
                           className={`text-lg transition-colors ${
-                            isSelected ? "text-accent" : "text-white/30"
+                            isSelected ? "text-accent" : "text-white/70"
                           }`}
                         >
                           {style.icon}
@@ -197,12 +182,12 @@ export default function RitualPage() {
                         <div>
                           <p
                             className={`text-sm tracking-wide transition-colors ${
-                              isSelected ? "text-accent" : "text-white/70"
+                              isSelected ? "text-accent" : "text-white/90"
                             }`}
                           >
                             {style.label}
                           </p>
-                          <p className="text-[10px] text-white/30 mt-0.5">
+                          <p className="text-[10px] text-white/60 mt-0.5">
                             {style.desc}
                           </p>
                         </div>
@@ -247,34 +232,25 @@ export default function RitualPage() {
         {phase === "flash" && (
           <motion.div
             key="flash"
-            className="fixed inset-0 flex items-center justify-center bg-black z-50"
+            className="fixed inset-0 flex items-center justify-center noise-bg z-50"
             initial={{ opacity: 0 }}
             animate={{ opacity: 1 }}
             exit={{ opacity: 0 }}
           >
             {/* Expanding ring */}
             <motion.div
-              className="absolute w-4 h-4 rounded-full border border-primary"
+              className="absolute w-4 h-4 rounded-full border border-[#e619c3]"
               initial={{ scale: 0, opacity: 1 }}
               animate={{ scale: 60, opacity: 0 }}
               transition={{ duration: 1.4, ease: "easeOut" }}
             />
             {/* Center flash */}
             <motion.div
-              className="w-2 h-2 rounded-full bg-white"
+              className="w-2 h-2 rounded-full bg-[#e619c3] shadow-[0_0_20px_#e619c3]"
               initial={{ scale: 1, opacity: 1 }}
               animate={{ scale: 0, opacity: 0 }}
               transition={{ duration: 0.8, delay: 0.3 }}
             />
-            {/* Name reveal */}
-            <motion.p
-              className="absolute font-serif text-2xl text-white/80"
-              initial={{ opacity: 0, scale: 0.8 }}
-              animate={{ opacity: [0, 1, 1, 0], scale: [0.8, 1, 1, 1.05] }}
-              transition={{ duration: 1.5, times: [0, 0.3, 0.7, 1] }}
-            >
-              ???
-            </motion.p>
           </motion.div>
         )}
       </AnimatePresence>

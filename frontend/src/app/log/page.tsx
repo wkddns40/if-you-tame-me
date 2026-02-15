@@ -22,7 +22,7 @@ export default function LogPage() {
   if (!companionId || !userId) return null;
 
   return (
-    <div className="min-h-screen bg-black">
+    <div className="min-h-screen noise-bg">
       {/* Nav */}
       <nav className="flex items-center justify-between px-6 py-3 border-b border-white/[0.04]">
         <span className="font-serif text-sm text-white/50">If You Tame Me</span>
