@@ -37,6 +37,8 @@ export default function ChatInterface({
   const [isConnected, setIsConnected] = useState(false);
   const [displayName, setDisplayName] = useState(companionName);
   const [nameRevealing, setNameRevealing] = useState(false);
+  const [isNamed, setIsNamed] = useState(companionName !== "???" && companionName !== "Companion");
+  const [namingFlash, setNamingFlash] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const streamingIdRef = useRef<string | null>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -117,12 +119,17 @@ export default function ChatInterface({
           },
         ]);
       } else if (data.type === "name_reveal") {
-        // Companion has been named — animate the header
+        // Companion has been named — animate the header + warm background
         const newName = data.content ?? "";
         if (newName) {
           setCompanionName(newName);
           setNameRevealing(true);
           setDisplayName(newName);
+          setNamingFlash(true);
+          setTimeout(() => {
+            setIsNamed(true);
+            setNamingFlash(false);
+          }, 2500);
           setTimeout(() => setNameRevealing(false), 2000);
         }
       } else if (data.type === "user_name_set") {
@@ -205,7 +212,61 @@ export default function ChatInterface({
   };
 
   return (
-    <div className="flex flex-col h-full text-white">
+    <div className="flex flex-col h-full text-white relative">
+      {/* Warm tone overlay — appears after naming */}
+      <div
+        className="absolute inset-0 pointer-events-none z-0 transition-opacity duration-[3000ms]"
+        style={{
+          opacity: isNamed ? 1 : 0,
+          background: "radial-gradient(ellipse at center bottom, rgba(200, 120, 50, 0.08) 0%, rgba(180, 80, 40, 0.04) 50%, transparent 80%)",
+        }}
+      />
+
+      {/* Dramatic naming flash */}
+      <AnimatePresence>
+        {namingFlash && (
+          <motion.div
+            key="naming-flash"
+            className="absolute inset-0 pointer-events-none z-50 flex items-center justify-center overflow-hidden"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.8 }}
+          >
+            {/* Expanding warm ring */}
+            <motion.div
+              className="absolute w-4 h-4 rounded-full border-2 border-[#e6a040]"
+              initial={{ scale: 0, opacity: 1 }}
+              animate={{ scale: 80, opacity: 0 }}
+              transition={{ duration: 2, ease: "easeOut" }}
+            />
+            {/* Second ring — delayed */}
+            <motion.div
+              className="absolute w-4 h-4 rounded-full border border-[#e68a30]/60"
+              initial={{ scale: 0, opacity: 1 }}
+              animate={{ scale: 60, opacity: 0 }}
+              transition={{ duration: 1.8, delay: 0.2, ease: "easeOut" }}
+            />
+            {/* Center warm flash */}
+            <motion.div
+              className="absolute w-40 h-40 rounded-full"
+              style={{ background: "radial-gradient(circle, rgba(230, 160, 64, 0.6) 0%, rgba(200, 120, 50, 0.2) 40%, transparent 70%)" }}
+              initial={{ scale: 0, opacity: 1 }}
+              animate={{ scale: 6, opacity: 0 }}
+              transition={{ duration: 2.2, ease: "easeOut" }}
+            />
+            {/* Warm screen tint */}
+            <motion.div
+              className="absolute inset-0"
+              style={{ background: "radial-gradient(ellipse at center, rgba(200, 120, 50, 0.12) 0%, transparent 70%)" }}
+              initial={{ opacity: 0 }}
+              animate={{ opacity: [0, 1, 0.6, 0] }}
+              transition={{ duration: 2.5, times: [0, 0.2, 0.5, 1] }}
+            />
+          </motion.div>
+        )}
+      </AnimatePresence>
+
       {/* Photo banner area (Instagram-style) */}
       {backgroundImage && (
         <div className="relative w-full shrink-0" style={{ height: "30vh" }}>
@@ -219,7 +280,7 @@ export default function ChatInterface({
       )}
 
       {/* Header */}
-      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06]">
+      <div className="flex items-center gap-3 px-6 py-4 border-b border-white/[0.06] relative z-10">
         <div className="w-2 h-2 rounded-full" style={{
           backgroundColor: isConnected ? "#e619c3" : "#666",
         }} />
@@ -248,7 +309,7 @@ export default function ChatInterface({
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6">
+      <div className="flex-1 overflow-y-auto px-6 py-6 space-y-6 relative z-10">
         <AnimatePresence initial={false}>
           {messages.map((msg) => (
             <motion.div
@@ -291,7 +352,7 @@ export default function ChatInterface({
       </div>
 
       {/* Input */}
-      <div className="px-6 py-4 border-t border-white/[0.06]">
+      <div className="px-6 py-4 border-t border-white/[0.06] relative z-10">
         <div className="flex items-center gap-3 rounded-2xl bg-white/[0.04] border border-white/[0.08] px-4 py-3">
           <input
             type="text"

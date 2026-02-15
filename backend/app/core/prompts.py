@@ -278,48 +278,42 @@ NAMING_SENTIMENT_PROMPT = """아래 최근 대화에서 사용자의 전반적�
 {{"score": 0.0}}
 """
 
-USER_NAME_EXTRACT_PROMPT = """사용자가 자신의 이름 또는 호칭을 알려주고 있습니다.
-아래 메시지에서 사용자의 이름/호칭만 추출하세요.
-예시:
-- "달무리로 불러줘" → "달무리"
-- "지은이야" → "지은"
-- "내 이름은 하늘이야" → "하늘"
-- "수빈이라고 해" → "수빈"
-- "김민수" → "김민수"
-- "민수!" → "민수"
-이름이 없으면 "NONE"을 반환하세요.
+NAMING_INTENT_PROMPT = """사용자의 메시지를 분석하여 이름 관련 의도를 분류하세요.
+
+## 분류 기준
+
+**"user_intro"** — 사용자가 자기 자신의 이름/호칭을 알려주는 경우:
+핵심 패턴: "나", "내", "저" 등 1인칭 주어 + 이름
+- "나는 달무리야" → user_intro, name: "달무리"
+- "달무리라고 불러줘" → user_intro, name: "달무리" (주어 생략, '불러줘' = 나를 불러줘)
+- "내 이름은 하늘이야" → user_intro, name: "하늘"
+- "지은이야" → user_intro, name: "지은" (자기소개 맥락)
+- "수빈이라고 해" → user_intro, name: "수빈" (나를 수빈이라고 해)
+
+**"ai_naming"** — 사용자가 AI에게 이름을 지어주는 경우:
+핵심 패턴: "너", "네", "니" 등 2인칭 + 이름, 또는 "부를게", "할게" 등 화자가 결정하는 표현
+- "너를 루나라고 부를게" → ai_naming, name: "루나"
+- "너 이름은 별이야" → ai_naming, name: "별이"
+- "이름은 코코로 할게" → ai_naming, name: "코코" ('할게' = 내가 정할게)
+- "앞으로 하늘이라고 부를게" → ai_naming, name: "하늘이"
+- "너한테 이름을 줄게, 루미" → ai_naming, name: "루미"
+
+**"none"** — 이름 관련 의도가 없는 경우:
+- "오늘 기분이 좀 안 좋아" → none
+- "루나라는 카페 가봤어?" → none
+- "이름이 뭐야?" → none
+- "반가워!" → none
+
+## 핵심 구분 규칙
+- "~라고 불러줘" = 나를 ~라고 불러달라는 뜻 → user_intro
+- "~라고 부를게" = 내가 너를 ~라고 부르겠다는 뜻 → ai_naming
+- "~(이)야" 단독 = 자기소개 → user_intro
+- "너/네 이름은 ~" = AI에게 이름 부여 → ai_naming
 
 사용자 메시지: "{message}"
 
 반드시 아래 JSON 형식으로만 응답하세요:
-{{"name": "추출된이름"}}
-"""
-
-SPONTANEOUS_NAMING_PROMPT = """사용자가 AI 컴패니언(너, 당신)에게 이름을 지어주려는 의도가 있는지 판단하고, 있다면 이름을 추출하세요.
-
-중요: 사용자가 자기 자신의 이름을 소개하는 것은 이름 짓기가 아닙니다!
-
-이름 짓기 의도가 있는 예시 (AI에게 이름을 붙여주는 경우):
-- "너 이름은 루나야" → is_naming: true, name: "루나"
-- "널 달무리라고 부를게" → is_naming: true, name: "달무리"
-- "이름은 별이로 할게" → is_naming: true, name: "별이"
-- "앞으로 코코라고 할게" → is_naming: true, name: "코코"
-- "너한테 이름을 줄게, 하늘이" → is_naming: true, name: "하늘이"
-
-이름 짓기 의도가 없는 예시:
-- "나는 지은이야" → is_naming: false (자기 소개)
-- "내 이름은 민수야" → is_naming: false (자기 소개)
-- "지은이라고 불러줘" → is_naming: false (자기 이름 알려주기)
-- "오늘 기분이 좀 안 좋아" → is_naming: false
-- "루나라는 카페 가봤어?" → is_naming: false
-- "이름이 뭐야?" → is_naming: false
-
-사용자 메시지: "{message}"
-
-반드시 아래 JSON 형식으로만 응답하세요:
-{{"is_naming": true, "name": "추출된이름"}}
-또는
-{{"is_naming": false, "name": "NONE"}}
+{{"intent": "user_intro 또는 ai_naming 또는 none", "name": "추출된이름 또는 NONE"}}
 """
 
 NAMING_EXTRACT_PROMPT = """사용자가 AI 컴패니언에게 이름을 지어주려고 합니다.

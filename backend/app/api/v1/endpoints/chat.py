@@ -19,8 +19,7 @@ from app.core.prompts import (
     NAMING_CONFIRM_TEMPLATE,
     NAMING_SENTIMENT_PROMPT,
     NAMING_EXTRACT_PROMPT,
-    USER_NAME_EXTRACT_PROMPT,
-    SPONTANEOUS_NAMING_PROMPT,
+    NAMING_INTENT_PROMPT,
 )
 from app.services.llm_engine import LLMEngine
 
@@ -211,25 +210,28 @@ async def check_naming_sentiment(companion_id: str) -> float:
         return 0.5
 
 
-async def extract_user_name(message: str) -> str | None:
-    """Extract the user's name/nickname from their message using GPT."""
+async def classify_naming_intent(message: str) -> dict:
+    """Classify whether the user is introducing themselves, naming the AI, or neither.
+    Returns {"intent": "user_intro"|"ai_naming"|"none", "name": str|None}"""
     try:
-        prompt = USER_NAME_EXTRACT_PROMPT.format(message=message)
+        prompt = NAMING_INTENT_PROMPT.format(message=message)
         response = await openai_client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=30,
+            max_tokens=50,
             temperature=0.0,
             response_format={"type": "json_object"},
         )
         result_data = json.loads(response.choices[0].message.content)
+        intent = result_data.get("intent", "none").strip()
         name = result_data.get("name", "NONE").strip()
-        if name and name != "NONE":
-            return name
-        return None
+        if name == "NONE":
+            name = None
+        logger.info("Naming intent: %s, name: %s (message: %s)", intent, name, message[:50])
+        return {"intent": intent, "name": name}
     except Exception as e:
-        logger.warning("User name extraction failed: %s", e)
-        return None
+        logger.warning("Naming intent classification failed: %s", e)
+        return {"intent": "none", "name": None}
 
 
 async def extract_name_from_message(message: str) -> str | None:
@@ -253,48 +255,21 @@ async def extract_name_from_message(message: str) -> str | None:
         return None
 
 
-async def check_spontaneous_naming(companion_id: str, companion: dict, message: str) -> dict | None:
-    """Check if the user is spontaneously naming the AI during conversation.
-    Returns {name, confirmation} if detected, None otherwise."""
-    # Only check if companion is still unnamed
-    if companion.get("name", "") != "???":
-        return None
+async def apply_ai_naming(companion_id: str, companion: dict, name: str) -> dict:
+    """Apply a name to the AI companion. Returns {name, confirmation}."""
+    # Update DB
+    sb = get_supabase_client()
+    sb.table("Companions").update(
+        {"name": name}
+    ).eq("companion_id", companion_id).execute()
 
-    try:
-        prompt = SPONTANEOUS_NAMING_PROMPT.format(message=message)
-        response = await openai_client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[{"role": "user", "content": prompt}],
-            max_tokens=50,
-            temperature=0.0,
-            response_format={"type": "json_object"},
-        )
-        result_data = json.loads(response.choices[0].message.content)
+    companion["name"] = name
+    _naming_awaiting.discard(companion_id)
+    _naming_prompted.add(companion_id)
 
-        if not result_data.get("is_naming", False):
-            return None
-
-        name = result_data.get("name", "NONE").strip()
-        if not name or name == "NONE":
-            return None
-
-        # Update DB
-        sb = get_supabase_client()
-        sb.table("Companions").update(
-            {"name": name}
-        ).eq("companion_id", companion_id).execute()
-
-        companion["name"] = name
-        # Clear naming ceremony state since user named spontaneously
-        _naming_awaiting.discard(companion_id)
-        _naming_prompted.add(companion_id)
-
-        confirmation = NAMING_CONFIRM_TEMPLATE.format(name=name)
-        logger.info("Spontaneous naming for %s: %s", companion_id, name)
-        return {"name": name, "confirmation": confirmation}
-    except Exception as e:
-        logger.warning("Spontaneous naming check failed: %s", e)
-        return None
+    confirmation = NAMING_CONFIRM_TEMPLATE.format(name=name)
+    logger.info("AI named for %s: %s", companion_id, name)
+    return {"name": name, "confirmation": confirmation}
 
 
 async def check_naming_event(companion_id: str, companion: dict) -> str | None:
@@ -566,18 +541,6 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                 user_name = ""
 
             try:
-                # 1.3. Extract user name from first message if not yet set
-                just_set_user_name = False
-                if not user_name:
-                    extracted = await extract_user_name(user_message)
-                    if extracted:
-                        user_name = extracted
-                        just_set_user_name = True
-                        await websocket.send_json({
-                            "type": "user_name_set",
-                            "content": extracted,
-                        })
-
                 # 1.5. Check if user is responding to naming ceremony
                 naming_result = await process_naming(str(companion_id), companion, user_message)
                 if naming_result:
@@ -605,25 +568,28 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                     save_chat_log(str(companion_id), "AI", confirmation, ai_embedding)
                     continue
 
-                # 1.7. Check if user is spontaneously naming the AI
-                # Skip if user just introduced themselves (to avoid confusing self-intro with AI naming)
-                if not just_set_user_name:
-                    spontaneous = await check_spontaneous_naming(
-                        str(companion_id), companion, user_message
-                    )
-                    if spontaneous:
+                # 1.6. Unified naming intent classification
+                # Single GPT call to determine: user_intro / ai_naming / none
+                naming_intent = await classify_naming_intent(user_message)
+
+                if naming_intent["intent"] == "ai_naming" and naming_intent["name"]:
+                    # User is naming the AI companion
+                    if companion.get("name", "") == "???":
+                        result = await apply_ai_naming(
+                            str(companion_id), companion, naming_intent["name"]
+                        )
                         # Save user message
                         user_embedding = await get_embedding(user_message)
                         save_chat_log(str(companion_id), "USER", user_message, user_embedding)
 
-                        # Send name_reveal first for frontend header animation
+                        # Send name_reveal for frontend animation
                         await websocket.send_json({
                             "type": "name_reveal",
-                            "content": spontaneous["name"],
+                            "content": result["name"],
                         })
 
                         # Send confirmation as AI message
-                        confirmation = spontaneous["confirmation"]
+                        confirmation = result["confirmation"]
                         await websocket.send_json({"type": "stream", "content": confirmation})
                         await websocket.send_json({
                             "type": "end",
@@ -635,6 +601,15 @@ async def chat_websocket(websocket: WebSocket, companion_id: UUID):
                         ai_embedding = await get_embedding(confirmation)
                         save_chat_log(str(companion_id), "AI", confirmation, ai_embedding)
                         continue
+
+                elif naming_intent["intent"] == "user_intro" and naming_intent["name"]:
+                    # User is introducing themselves
+                    if not user_name:
+                        user_name = naming_intent["name"]
+                        await websocket.send_json({
+                            "type": "user_name_set",
+                            "content": user_name,
+                        })
 
                 # 2. Embed user message
                 user_embedding = await get_embedding(user_message)
